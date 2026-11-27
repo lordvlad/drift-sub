@@ -69,7 +69,7 @@ const input = new Input(canvas, ui);
 function setIntroText(touch) {
   $('vfHint').textContent = touch ? 'drag to aim' : 'mouse / A D to aim · Space or Enter to shoot · Esc to exit';
   $('introText').innerHTML = touch
-    ? 'Left stick: forward &amp; back.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
+    ? 'Left lever: thrust forward &amp; reverse.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
     : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps &nbsp; <kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
 }
 $('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.target.blur(); });

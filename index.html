@@ -30,8 +30,10 @@
   #go:disabled { opacity: .5; cursor: default; }
   #touchui { position: fixed; inset: 0; pointer-events: none; z-index: 4; display: none; }
   body.touch #touchui { display: block; }
-  #joy { position: absolute; left: max(22px, env(safe-area-inset-left)); bottom: max(26px, env(safe-area-inset-bottom)); width: 140px; height: 140px; border-radius: 50%; background: #0b2f4455; border: 1px solid #9fe3ff55; pointer-events: auto; touch-action: none; display: grid; place-items: center; backdrop-filter: blur(4px); }
-  #knob { width: 58px; height: 58px; border-radius: 50%; background: #ffd21fcc; box-shadow: 0 4px 16px #0006; pointer-events: none; }
+  #joy { position: absolute; left: max(22px, env(safe-area-inset-left)); bottom: max(26px, env(safe-area-inset-bottom)); width: 68px; height: 172px; border-radius: 34px; background: #0b2f4455; border: 1px solid #9fe3ff55; pointer-events: auto; touch-action: none; display: grid; place-items: center; backdrop-filter: blur(4px); }
+  #joy::before, #joy::after { position: absolute; left: 0; right: 0; text-align: center; font-size: 18px; opacity: .55; pointer-events: none; }
+  #joy::before { content: '+'; top: 6px; } #joy::after { content: '\2212'; bottom: 6px; }
+  #knob { width: 52px; height: 52px; border-radius: 50%; background: #ffd21fcc; box-shadow: 0 4px 16px #0006; pointer-events: none; }
   .vbtn { position: absolute; right: max(22px, env(safe-area-inset-right)); width: 64px; height: 64px; border-radius: 50%; background: #0b2f4466; border: 1px solid #9fe3ff55; color: #dff6ff; font-size: 22px; display: grid; place-items: center; pointer-events: auto; touch-action: none; backdrop-filter: blur(4px); }
   .vbtn.on { background: #ffd21f99; }
   #btnUp { bottom: calc(max(26px, env(safe-area-inset-bottom)) + 76px); }
@@ -51,7 +53,7 @@
   #gMark { position: absolute; left: -4px; width: 100%; height: 0; border-top: 2px solid var(--c); }
   #gMark i { position: absolute; left: -9px; top: -6px; border: 5px solid transparent; border-left: 8px solid var(--c); }
   #gVal { position: absolute; left: 36px; top: -11px; font-size: 16px; font-weight: 700; white-space: nowrap; background: #0a3a55aa; border-radius: 6px; padding: 0 6px; }
-  body.touch #gauge { transform: translateY(-62%) scale(.8); transform-origin: left center; }
+  body.touch #gauge { top: 36%; transform: translateY(-50%) scale(.7); transform-origin: left center; }
   #fsBanner { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 16px; font-size: 13px; background: #0b2f44cc; border: 1px solid #9fe3ff44; border-radius: 999px; backdrop-filter: blur(6px); animation: fsIn .8s ease both; }
   #fsBanner[hidden] { display: none; }
   #fsBanner button { font: inherit; font-size: 12px; color: #dff6ff; background: #ffffff1a; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }

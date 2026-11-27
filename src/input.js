@@ -5,7 +5,7 @@ export class Input {
     this.canvas = canvas; this.ui = ui;
     this.keys = new Set(); this.sens = 1;
     this.lookX = 0; this.lookY = 0;
-    this.joy = { x: 0, y: 0 }; this.btnUp = false; this.btnDown = false;
+    this.joy = { y: 0 }; this.btnUp = false; this.btnDown = false;
     this.boost = false; this.locked = false; this.mode = 'auto'; this.touchUI = false;
     this.coarse = matchMedia('(pointer: coarse)').matches || (matchMedia('(hover: none)').matches && navigator.maxTouchPoints > 0);
     this._bindKeys(); this._bindMouse(); this._bindTouch();
@@ -21,7 +21,7 @@ export class Input {
     this.mode = m;
     this.touchUI = m === 'touch' || (m === 'auto' && this.coarse);
     this.ui.applyMode(this.mode, this.touchUI);
-    if (!this.touchUI) { this.joy.x = this.joy.y = 0; this.btnUp = this.btnDown = false; }
+    if (!this.touchUI) { this.joy.y = 0; this.btnUp = this.btnDown = false; }
   }
   cycleMode() { this.setMode(this.mode === 'auto' ? 'touch' : this.mode === 'touch' ? 'keys' : 'auto'); }
 
@@ -52,20 +52,18 @@ export class Input {
   _bindTouch() {
     const ui = this.ui, joyEl = ui.joy, knob = ui.knob;
     let joyId = null, lookId = null, jc = { x: 0, y: 0 }, lp = { x: 0, y: 0 };
-    const RMAX = 55;
+    const RMAX = 60;
     const setJoy = (e) => {
-      let dx = 0, dy = e.clientY - jc.y; const l = Math.hypot(dx, dy);
-      if (l > RMAX) { dx *= RMAX / l; dy *= RMAX / l; }
-      knob.style.transform = `translate(${dx}px,${dy}px)`;
-      const dz = 0.1, fx = dx / RMAX, fy = -dy / RMAX;
-      this.joy.x = Math.abs(fx) < dz ? 0 : fx; this.joy.y = Math.abs(fy) < dz ? 0 : fy;
+      const dy = clamp(e.clientY - jc.y, -RMAX, RMAX), fy = -dy / RMAX;   // vertical lever: up = forward, down = reverse
+      knob.style.transform = `translateY(${dy}px)`;
+      this.joy.y = Math.abs(fy) < 0.1 ? 0 : fy;
     };
     joyEl.addEventListener('pointerdown', (e) => {
       e.preventDefault(); joyId = e.pointerId; joyEl.setPointerCapture(joyId);
       const r = joyEl.getBoundingClientRect(); jc = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; setJoy(e);
     });
     joyEl.addEventListener('pointermove', (e) => { if (e.pointerId === joyId) setJoy(e); });
-    const endJoy = (e) => { if (e.pointerId !== joyId) return; joyId = null; this.joy.x = this.joy.y = 0; knob.style.transform = 'translate(0,0)'; };
+    const endJoy = (e) => { if (e.pointerId !== joyId) return; joyId = null; this.joy.y = 0; knob.style.transform = 'translateY(0)'; };
     joyEl.addEventListener('pointerup', endJoy); joyEl.addEventListener('pointercancel', endJoy);
     const hold = (el, key) => {
       el.addEventListener('pointerdown', (e) => { e.preventDefault(); this[key] = true; el.setPointerCapture(e.pointerId); el.classList.add('on'); });

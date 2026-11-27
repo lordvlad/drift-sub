@@ -12,7 +12,7 @@ A quiet underwater exploration toy: steer a small yellow submarine through an en
 - **Species & depths (m):** fish — anthias 2–28, yellow tang 2–30, blue chromis 3–40, cyan damsel 3–32, green wrasse 4–38, coral snapper 15–55, violet basslet 8–48 (rare), sardine 3–50, trevally 6–45, mackerel 8–60, fusilier 5–40, ghost cardinal 28–60 (rare), prism school 5–55 (rare); sharks — blacktip 3–35, grey reef 5–45, tiger 12–60; whales — humpback 8–50, blue 15–60. Definitions live in `src/species.js`.
 - **Snapshots:** `P` or the camera button captures what the sub sees (hull hidden, up to 1920 px, JPEG). The album keeps the newest 100 in IndexedDB on your device; open it from "Album", view, download or delete. Nothing is uploaded.
 - **Depth:** left-side gauge shows depth; the sub is limited to 60 m (turns red and pushes back near the limit) even though the seabed goes deeper.
-- **Touch:** left stick = forward/back only, drag elsewhere to steer, ▲ ▼ rise/dive. The "Controls" button (top right) cycles auto / touch / keys.
+- **Touch:** left lever = thrust only, drag elsewhere to steer, ▲ ▼ rise/dive. The "Controls" button (top right) cycles auto / touch / keys.
 - World = pure function of `?seed=N`; only a 5×5 window of seabed chunks is ever in memory.
 
 ```
