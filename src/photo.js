@@ -88,13 +88,21 @@ export function scorePhoto(ctx) {
   const rayStr = clamp(str / 0.22, 0, 1.2);
 
   // ---- price ----
+  for (const c of fauna.cruisers) {
+    if (!c.active || occluded(field, cp, c.pos)) continue;
+    see(c.sp, 'big', c.len * BIG_LEN, c.pos.x, c.pos.y, c.pos.z, 200, 0.012);
+  }
+  for (const p of fauna.pods) {
+    if (!p.active || occluded(field, cp, p.pos)) continue;
+    for (let i = 0; i < p.n; i++) see(p.sp, 'pod', p.SC[i] * BIG_LEN, p.P[i * 3], p.P[i * 3 + 1], p.P[i * 3 + 2], 200, 0.012);
+  }
   const items = []; let animals = 0; const names = [];
   for (const e of seen.values()) {
     if (e.kind === 'calf') continue;
     const cent = e.cent / e.count, sizeF = clamp(0.35 + e.frac * 10, 0.35, 2.0), centF = 0.7 + 0.3 * cent;
     const amt = e.sp.value * (1 + 0.6 * Math.log2(e.count)) * sizeF * centF;
     animals += amt; names.push(e.sp.name);
-    items.push([`${e.sp.name}${e.kind === 'fish' ? ' ×' + e.count : ''}${e.sp.rare ? ' (rare)' : ''}`, amt]);
+    items.push([`${e.sp.name}${e.count > 1 ? ' ×' + e.count : ''}${e.sp.rare ? ' (rare)' : ''}`, amt]);
   }
   if (calf) { const amt = w.sp.value * 0.35; animals += amt; items.push(['Mother and calf', amt]); }
   const types = seen.size - (calf ? 1 : 0);

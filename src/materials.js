@@ -46,7 +46,8 @@ export const makeTerrainMaterial = () => patch(new THREE.MeshLambertMaterial({ v
 export const makeDecorMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { sway: true, caustics: true });
 
 /** Creature material: tail sway along z. axis (1,0,0) = side-to-side, (0,1,0) = up-down. */
-export function makeCreatureMaterial({ amp, freq, axis = [1, 0, 0], wave = 4 }) {
+/** mode 'tail' (default): travelling body wave toward the tail; 'flap': wings beat up/down, growing toward the tips (manta). */
+export function makeCreatureMaterial({ amp, freq, axis = [1, 0, 0], wave = 4, mode = 'tail' }) {
   const u = { uFreq: { value: freq }, uAmp: { value: amp }, uAxis: { value: new THREE.Vector3(...axis) }, uWave: { value: wave } };
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   mat.userData.u = u;
@@ -61,10 +62,16 @@ export function makeCreatureMaterial({ amp, freq, axis = [1, 0, 0], wave = 4 }) 
   #else
   float ph = 0.0;
   #endif
+  #ifdef FLAP
+  float ax = abs(position.x);
+  transformed.y += sin(uTime * uFreq + ph - ax * uWave) * uAmp * ax * ax * 4.0;
+  #else
   float w = clamp((0.25 - position.z) / 0.75, 0.0, 1.0); w *= w;
   transformed += uAxis * sin(uTime * uFreq + ph - position.z * uWave) * uAmp * w;
+  #endif
 }`);
   };
-  mat.customProgramCacheKey = () => 'creature';
+  if (mode === 'flap') mat.defines = { FLAP: '' };
+  mat.customProgramCacheKey = () => 'creature-' + mode;
   return mat;
 }

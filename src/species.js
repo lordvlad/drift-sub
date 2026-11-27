@@ -59,3 +59,21 @@ export function bodyTint(sp, out = new THREE.Color(), exoticChance = 0.12) {
   out.setHSL(h, 1, 0.5).lerp(_w, 1 - s).multiplyScalar(R(sp.val[0], sp.val[1]));
   return out;
 }
+
+// small squid swim in loose schools (instanced like fish); firefly squid glow faintly
+export const SQUID = [
+  { id: 'reefsquid', name: 'Bigfin reef squid', habitat: 'open', min: 2,  max: 30, value: 9,  colors: ['#f0b49c', '#d9907a'], size: [0.5, 0.9],  count: [5, 18],  weight: 3 },
+  { id: 'firefly',   name: 'Firefly squid',     habitat: 'open', min: 25, max: 60, value: 18, colors: ['#8fd8ff', '#b59cff'], size: [0.25, 0.45], count: [30, 90], weight: 1.2, rare: true, glow: true },
+];
+export const GIANT_SQUID = [
+  { id: 'giantsquid', name: 'Giant squid', min: 40, max: 60, value: 900, len: [9, 13], hue: 0.02, hueJ: 0.04, sat: [0.45, 0.7], val: [0.7, 0.95], weight: 1, rare: true },
+];
+export const MANTAS = [
+  { id: 'manta', name: 'Manta ray', min: 3, max: 40, value: 220, len: [4, 6.5], hue: 0.6, hueJ: 0.06, sat: [0.05, 0.25], val: [0.8, 1], weight: 1, rare: true },
+];
+export const ORCAS = [
+  { id: 'orca', name: 'Orca', min: 2, max: 40, value: 300, len: [6, 8], pod: [2, 6], weight: 1, rare: true },
+];
+export const DOLPHINS = [
+  { id: 'dolphin', name: 'Bottlenose dolphin', min: 1, max: 25, value: 120, len: [2.2, 3], pod: [3, 9], weight: 1 },
+];
