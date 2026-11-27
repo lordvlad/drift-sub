@@ -6,22 +6,22 @@ const KEY = 'drift-fleet';
 
 export const SUBS = {
   lemon:     { id: 'lemon',     name: 'Lemon',     price: 0,     maxDepth: 60, fragility: 1,   thrust: 1,    turn: 1,   desc: 'The little yellow all-rounder: sturdy, steady and easy to steer.' },
-  manta:     { id: 'manta',     name: 'Manta',     price: 6000,  maxDepth: 45, fragility: 1.5, thrust: 1.05, turn: 1.6, desc: 'Winged and flexible: it turns on a coin and glides like a ray, but its hull is thin.' },
-  barracuda: { id: 'barracuda', name: 'Barracuda', price: 9000,  maxDepth: 45, fragility: 1.7, thrust: 1.7,  turn: 1,   desc: 'A needle built for speed. Covers the sea fast, and dents easily.' },
-  squid:     { id: 'squid',     name: 'Squid',     price: 14000, maxDepth: 95, fragility: 2.4, thrust: 0.9,  turn: 1,   desc: 'A deep-sea explorer that reaches 95 m. Slow, and the most fragile of all.' },
+  manta:     { id: 'manta',     name: 'Manta',     price: 45000, maxDepth: 45, fragility: 1.5, thrust: 1.05, turn: 1.6, desc: 'Winged and flexible: it turns on a coin and glides like a ray, but its hull is thin.' },
+  barracuda: { id: 'barracuda', name: 'Barracuda', price: 80000, maxDepth: 45, fragility: 1.7, thrust: 1.7,  turn: 1,   desc: 'A needle built for speed. Covers the sea fast, and dents easily.' },
+  squid:     { id: 'squid',     name: 'Squid',     price: 150000, maxDepth: 95, fragility: 2.4, thrust: 0.9,  turn: 1,   desc: 'A deep-sea explorer that reaches 95 m. Slow, and the most fragile of all.' },
 };
 export const SUB_IDS = Object.keys(SUBS);
 
 export const ITEMS = [
-  { id: 'lamp',   name: 'Headlights',           price: 150,  effect: 'Twin headlights for the dark and the deep (F).' },
-  { id: 'zoom2',  name: 'Zoom objective 2×',    price: 300,  effect: 'Viewfinder zoom: step to 2× (zoom button, mouse wheel, + / −).' },
-  { id: 'zoom4',  name: 'Zoom objective 4×',    price: 900,  requires: 'zoom2', effect: 'Viewfinder zoom up to 4× for distant animals.' },
-  { id: 'repair', name: 'Hull repair kit',      price: 60,   consumable: true, effect: 'Fully repairs this sub’s hull at once.' },
-  { id: 'prop2',  name: 'Propeller Mk II',      price: 500,  effect: '+20% thrust.' },
-  { id: 'prop3',  name: 'Propeller Mk III',     price: 1500, requires: 'prop2', effect: '+40% thrust (total).' },
-  { id: 'hull1',  name: 'Hull strengthener I',  price: 400,  effect: '+10 m maximum dive depth.' },
-  { id: 'hull2',  name: 'Hull strengthener II', price: 1200, requires: 'hull1', effect: '+20 m maximum dive depth (total).' },
-  { id: 'strafe', name: 'Manoeuvring kit',      price: 800,  effect: 'Sideways thrusters: strafe left / right (Q / E, or the touch joystick).' },
+  { id: 'lamp',   name: 'Headlights',           price: 400,  effect: 'Twin headlights for the dark and the deep (F).' },
+  { id: 'zoom2',  name: 'Zoom objective 2×',    price: 1200, effect: 'Viewfinder zoom: step to 2× (zoom button, mouse wheel, + / −).' },
+  { id: 'zoom4',  name: 'Zoom objective 4×',    price: 4000, requires: 'zoom2', effect: 'Viewfinder zoom up to 4× for distant animals.' },
+  { id: 'repair', name: 'Hull repair kit',      price: 150,  consumable: true, effect: 'Fully repairs this sub’s hull at once.' },
+  { id: 'prop2',  name: 'Propeller Mk II',      price: 2000, effect: '+20% thrust.' },
+  { id: 'prop3',  name: 'Propeller Mk III',     price: 6000, requires: 'prop2', effect: '+40% thrust (total).' },
+  { id: 'hull1',  name: 'Hull strengthener I',  price: 1500, effect: '+10 m maximum dive depth.' },
+  { id: 'hull2',  name: 'Hull strengthener II', price: 5000, requires: 'hull1', effect: '+20 m maximum dive depth (total).' },
+  { id: 'strafe', name: 'Manoeuvring kit',      price: 3500, effect: 'Sideways thrusters: strafe left / right (Q / E, or the touch joystick).' },
 ];
 export const ITEM = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
 
