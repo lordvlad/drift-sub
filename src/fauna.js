@@ -266,20 +266,20 @@ class Shark extends Big {
     } else if (dist < 70 && Math.random() < dt * 0.01) this.cur = R(25, 50);
     const away = this.scare(sub, dt, 1.1);
     if (this.fear > 0.05) { this.cur = 0; wantYaw = away; }
-    const target = clamp(angDiff(this.yaw, wantYaw), -1, 1) * (0.4 + this.fear * 1.2);
+    const target = clamp(angDiff(this.yaw, wantYaw), -1, 1) * (0.4 + this.fear * 0.6);
     this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * 0.8));
     this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
     const gA = this.aheadGround(field, ax, az, [6, 12, 22, 34]);
     const wantY = this.bandY(Math.max(gA + 8 + Math.sin(t * 0.05) * 6, gA + 4), gA, 4);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.5);
-    const spd = swim(this, dt, this.speed, 11, 7);   // reef sharks sprint to ~11 m/s in about 1.5 s
+    const spd = swim(this, dt, this.speed, 10, 4.5);   // reef sharks sprint to ~10 m/s in about 2 s
     this.pitch += (clamp(dy / Math.max(1, spd), -0.4, 0.7) - this.pitch) * (1 - Math.exp(-dt * 1.6));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.2 + 0.6);
     this.roll += (-this.yawRate * 1.3 - this.roll) * (1 - Math.exp(-dt * 2));
-    this.mat.userData.u.uFreq.value = 3 + spd * 0.9;
+    this.mat.userData.u.uFreq.value = Math.min(6.5, 2.6 + spd * 0.4);   // tail beats faster when sprinting, but stays a plausible few Hz
     this.place();
     if (Math.hypot(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z) > 190) this.despawn();
   }
@@ -432,7 +432,7 @@ class Pod {
     const wantY = this.bandY(Math.max(gA + o.alt[0] + (o.alt[1] - o.alt[0]) * (0.5 + 0.5 * Math.sin(t * 0.06)), gA + L * 0.8), gA);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.2);
     const spd = swim(this, dt, this.speed, o.burst, o.acc);
-    this.mat.userData.u.uFreq.value = 1.5 + spd * 0.5;
+    this.mat.userData.u.uFreq.value = Math.min(4.5, 1.4 + spd * 0.3);
     this.pitch += (clamp(dy / Math.max(1, spd), -0.35, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.4));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
