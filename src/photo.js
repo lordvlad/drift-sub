@@ -96,6 +96,12 @@ export function scorePhoto(ctx) {
     if (!p.active || occluded(field, cp, p.pos)) continue;
     for (let i = 0; i < p.n; i++) see(p.sp, 'pod', p.SC[i] * BIG_LEN, p.P[i * 3], p.P[i * 3 + 1], p.P[i * 3 + 2], 200, 0.012);
   }
+  const emit = (sp, kind, len, x, y, z, o = {}) => {
+    if (o.skipOcclusion !== true && !o.checked && occluded(field, cp, v.set(x, y, z))) return;
+    see(sp, kind, len, x, y, z, o.maxDist ?? 140, o.minFrac ?? 0.008);
+  };
+  emit.occluded = (x, y, z) => occluded(field, cp, v.set(x, y, z));
+  for (const g of fauna.groups) if (g.sightings) g.sightings(emit);
   const items = []; let animals = 0; const names = [];
   for (const e of seen.values()) {
     if (e.kind === 'calf') continue;

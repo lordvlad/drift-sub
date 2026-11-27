@@ -197,3 +197,6 @@ export const SHEETS = {
     fun: 'A blue whale\'s calls are so loud and low that they can travel hundreds of kilometres through the ocean.',
   },
 };
+
+/** Fact sheets for plug-in species: { id: { sci, wiki, text: [2-3 paragraphs], fun } } */
+export function registerSheets(sheets) { Object.assign(SHEETS, sheets); }

@@ -81,3 +81,6 @@ export const DOLPHINS = [
 
 /** Bestiary page order (page number = index + 1). */
 export const BESTIARY = [...FISH, ...SQUID, ...SHARKS, ...MANTAS, ...DOLPHINS, ...ORCAS, ...GIANT_SQUID, ...WHALES];
+
+/** Plug-in species (places, deep sea, ...): appended to the bestiary at import time, so import the registering module before the Bestiary is constructed. */
+export function registerSpecies(list) { for (const sp of list) if (!BESTIARY.some((b) => b.id === sp.id)) BESTIARY.push(sp); }

@@ -50,6 +50,7 @@ const pickCount = () => {
   return Math.floor(R(120, 220));
 };
 const CAP = 220;
+const DEFAULT_BIOME = { reef: 0, open: 1, deep: 0, vent: 0, magma: 0, cave: 0, trench: 0 };
 // whale body as spheres along the spine: [z, radius] in units of body length (nose = +0.5)
 const SPINE = [0.36, 0.1, 0.22, 0.14, 0.05, 0.15, -0.12, 0.13, -0.27, 0.085, -0.38, 0.05];
 
@@ -492,7 +493,17 @@ export class Fauna {
     this.whale = new Whale(scene, { humpback: humpbackGeometry(), blue: blueWhaleGeometry() });
     this.threats = [{ x: 0, y: 0, z: 0, r: 8 }];
     this.whaleLevel = 0;
+    /**
+     * Plug-in animal groups (see src/groups/*.js). A group is:
+     *   { id, update(dt, sub, ctx), threats?(push), collide?(pos, vel, radius) -> impact speed, sightings?(emit), hideAll?() }
+     * ctx = { field, phase, profile ('lemon'|'manta'|'barracuda'|'squid'), biome(x, z) -> weights, threats, frame, sub }.
+     * emit(species, kind, lengthMetres, x, y, z, { maxDist?, minFrac?, count? }) reports a visible individual to the photo scorer;
+     * emit.occluded(x, y, z) tells whether the seabed blocks the line of sight (call once per school instead of per fish).
+     */
+    this.groups = []; this.profile = 'lemon';
   }
+  addGroup(g) { this.groups.push(g); return g; }
+  biome(x, z) { return this.field.biomeAt ? this.field.biomeAt(x, z) : DEFAULT_BIOME; }
   init(sub) {
     for (const s of this.swarms) { s.spawn(this.field, sub); // initial: closer so the first view is alive
       const a = Math.random() * 6.28, d = 25 + Math.random() * 85;
@@ -529,6 +540,8 @@ export class Fauna {
       if (c.active) c.update(dt, this.field, sub);
       else { c.timer -= dt * rate(c.o.kind); if (c.timer <= 0) c.spawn(this.field, sub); }
     }
+    const ctx = { field: this.field, phase, profile: this.profile, biome: (x, z) => this.biome(x, z), threats: th, frame: this.frame, sub };
+    for (const g of this.groups) { g.update(dt, sub, ctx); if (g.threats) g.threats((t) => th.push(t)); }
     const w = this.whale;
     if (w.active) w.update(dt, this.field, sub);
     else { w.timer -= dt * rate('whale'); if (w.timer <= 0) w.spawn(this.field, sub); }
@@ -536,11 +549,13 @@ export class Fauna {
   }
   /** Sphere-vs-whale (and calf) collision: body approximated by a chain of spheres along its axis. Returns the strongest impact speed (relative to the whale), 0 if none. */
   collide(pos, vel, radius) {
-    const w = this.whale; if (!w.active) return 0;
+    let gbest = 0;
+    for (const g of this.groups) if (g.collide) gbest = Math.max(gbest, g.collide(pos, vel, radius));
+    const w = this.whale; if (!w.active) return gbest;
     const girth = w.sp && w.sp.id === 'blue' ? 0.62 : 1;   // blue whales are much slimmer than humpbacks
     let best = this._bodyHit(w.pos, w.len, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius, girth);
     if (w.hasCalf && w.calfMesh.visible) best = Math.max(best, this._bodyHit(w.calfPos, w.len * 0.4, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius, girth));
-    return best;
+    return Math.max(best, gbest);
   }
   _bodyHit(c, len, yaw, pitch, speed, pos, vel, radius, girth = 1) {
     if (Math.abs(pos.x - c.x) > len || Math.abs(pos.z - c.z) > len || Math.abs(pos.y - c.y) > len) return 0;
