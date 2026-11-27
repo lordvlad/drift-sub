@@ -14,6 +14,7 @@ import { Store, AlbumUI, Wallet, MAX_SHOTS } from './album.js';
 import { scorePhoto } from './photo.js';
 import { drawCracks } from './cracks.js';
 import { ib, svg } from './icons.js';
+import { Bestiary } from './bestiary.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -110,6 +111,8 @@ if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.h
 const store = new Store(), wallet = new Wallet();
 const toastEl = $('toast'); let toastT = 0;
 function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
+const bestiary = new Bestiary((n) => ib($('bookBtn'), 'book', `Bestiary (${n} pages)`));
+$('bookBtn').addEventListener('click', (e) => { setViewfinder(false); bestiary.open(); e.currentTarget.blur(); });
 const album = new AlbumUI(store, wallet, (n) => albumIcon(n), toast);
 const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`); ib($('vfAlbum'), 'album', `Album (${n})`); };
 albumIcon(0); store.list().then((l) => albumIcon(l.length));
@@ -131,7 +134,7 @@ $('vfAlbum').addEventListener('click', () => { setViewfinder(false); album.open(
 $('vfLamp').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
 $('shutter').addEventListener('click', (e) => { wantSnap = true; e.currentTarget.blur(); });
 addEventListener('keydown', (e) => {
-  if (album.isOpen || e.repeat) return;
+  if (album.isOpen || bestiary.isOpen || e.repeat) return;
   if (e.code === 'KeyP') setViewfinder(!vf);
   else if (vf && e.code === 'Escape') setViewfinder(false);
   else if (vf && (e.code === 'Enter' || e.code === 'Space')) wantSnap = true;
@@ -182,7 +185,15 @@ async function finishSnapshot({ buf, w, h, meta, score, damage }) {
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
   const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
-  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species }); const n = (await store.list()).length; albumIcon(n); toast(`Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
+  // bestiary: crop each animal out of the (possibly cracked) snapshot
+  const fresh = bestiary.record(score.spots.filter((p) => p.frac >= 0.03).map(   // must be recognisable: >= 3% of frame height
+    (p) => ({ id: p.id, frac: p.frac, crop: () => {
+    const ch = Math.min(h, Math.max(h * 0.3, p.frac * h * (p.school ? 3.2 : 1.7))), cw = Math.min(w, ch * 4 / 3);
+    const sx = Math.min(w - cw, Math.max(0, (p.x + 1) / 2 * w - cw / 2)), sy = Math.min(h - ch, Math.max(0, (1 - p.y) / 2 * h - ch / 2));
+    const c = document.createElement('canvas'); c.width = 320; c.height = 240; c.getContext('2d').drawImage(cv, sx, sy, cw, ch, 0, 0, 320, 240);
+    return c.toDataURL('image/jpeg', 0.78);
+  } })));
+  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species }); const n = (await store.list()).length; albumIcon(n); toast(fresh.length ? `New bestiary page: ${fresh.join(', ')}` : `Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
   catch { toast('Could not save snapshot (storage full?)'); }
 }
 
@@ -331,6 +342,6 @@ function frame(now) {
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = { drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+window.__sim = { bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !params.has('nosw')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

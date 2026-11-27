@@ -9,20 +9,20 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
  */
 export const FISH = [
   // reef dwellers (follow the seabed)
-  { id: 'anthias',  name: 'Orange anthias',   habitat: 'reef', min: 2,  max: 28, value: 4,  colors: ['#ff7a1a', '#ff4f8b'], size: [0.25, 0.55], weight: 3 },
+  { id: 'anthias',  name: 'Lyretail anthias',   habitat: 'reef', min: 2,  max: 28, value: 4,  colors: ['#ff7a1a', '#ff4f8b'], size: [0.25, 0.55], weight: 3 },
   { id: 'tang',     name: 'Yellow tang',      habitat: 'reef', min: 2,  max: 30, value: 5,  colors: ['#ffd60a'],            size: [0.35, 0.7],  weight: 3 },
   { id: 'chromis',  name: 'Blue chromis',     habitat: 'reef', min: 3,  max: 40, value: 4,  colors: ['#1e6bff', '#0b2f9a'], size: [0.2, 0.5],   weight: 3 },
-  { id: 'damsel',   name: 'Cyan damselfish',  habitat: 'reef', min: 3,  max: 32, value: 6,  colors: ['#35e0ff', '#2a7bff'], size: [0.3, 0.6],   weight: 2 },
-  { id: 'wrasse',   name: 'Green wrasse',     habitat: 'reef', min: 4,  max: 38, value: 5,  colors: ['#58e08a', '#2fb4a0'], size: [0.4, 0.8],   weight: 2 },
-  { id: 'snapper',  name: 'Coral snapper',    habitat: 'reef', min: 15, max: 55, value: 8,  colors: ['#e8453c', '#ff8a5c'], size: [0.5, 0.9],   weight: 2 },
-  { id: 'basslet',  name: 'Violet basslet',   habitat: 'reef', min: 8,  max: 48, value: 14, colors: ['#a66bff', '#ff6bd5'], size: [0.3, 0.55],  weight: 1, rare: true },
+  { id: 'damsel',   name: 'Blue-green chromis',  habitat: 'reef', min: 3,  max: 32, value: 6,  colors: ['#35e0ff', '#2a7bff'], size: [0.3, 0.6],   weight: 2 },
+  { id: 'wrasse',   name: 'Moon wrasse',     habitat: 'reef', min: 4,  max: 38, value: 5,  colors: ['#58e08a', '#2fb4a0'], size: [0.4, 0.8],   weight: 2 },
+  { id: 'snapper',  name: 'Emperor red snapper',    habitat: 'reef', min: 15, max: 55, value: 8,  colors: ['#e8453c', '#ff8a5c'], size: [0.5, 0.9],   weight: 2 },
+  { id: 'basslet',  name: 'Royal gramma',   habitat: 'reef', min: 8,  max: 48, value: 14, colors: ['#a66bff', '#ff6bd5'], size: [0.3, 0.55],  weight: 1, rare: true },
   // open water schools
-  { id: 'sardine',  name: 'Silver sardine',   habitat: 'open', min: 3,  max: 50, value: 3,  colors: ['#c9d6e2', '#9fb3c6'], size: [0.2, 0.4],   weight: 4 },
+  { id: 'sardine',  name: 'Sardine',   habitat: 'open', min: 3,  max: 50, value: 3,  colors: ['#c9d6e2', '#9fb3c6'], size: [0.2, 0.4],   weight: 4 },
   { id: 'trevally', name: 'Golden trevally',  habitat: 'open', min: 6,  max: 45, value: 7,  colors: ['#e9b54a', '#ffd98a'], size: [0.4, 0.8],   weight: 2 },
   { id: 'mackerel', name: 'Blue mackerel',    habitat: 'open', min: 8,  max: 60, value: 4,  colors: ['#9fb3c6', '#5d6f86'], size: [0.3, 0.6],   weight: 3 },
-  { id: 'fusilier', name: 'Sunset fusilier',  habitat: 'open', min: 5,  max: 40, value: 6,  colors: ['#ff9f1c', '#ffe066'], size: [0.3, 0.6],   weight: 2 },
-  { id: 'ghost',    name: 'Ghost cardinal',   habitat: 'open', min: 28, max: 60, value: 16, colors: ['#ffffff', '#ffd1a1'], size: [0.35, 0.7],  weight: 1, rare: true },
-  { id: 'prism',    name: 'Prism school',     habitat: 'open', min: 5,  max: 55, value: 25, colors: null /* rainbow */,     size: [0.3, 0.6],   weight: 0.5, rare: true },
+  { id: 'fusilier', name: 'Yellowtail fusilier',  habitat: 'open', min: 5,  max: 40, value: 6,  colors: ['#ff9f1c', '#ffe066'], size: [0.3, 0.6],   weight: 2 },
+  { id: 'ghost',    name: 'Glassy sweeper',   habitat: 'open', min: 28, max: 60, value: 16, colors: ['#ffffff', '#ffd1a1'], size: [0.35, 0.7],  weight: 1, rare: true },
+  { id: 'prism',    name: 'Rainbow runner',     habitat: 'open', min: 5,  max: 55, value: 25, colors: null /* rainbow */,     size: [0.3, 0.6],   weight: 0.5, rare: true },
 ];
 
 export const SHARKS = [
@@ -78,3 +78,6 @@ export const ORCAS = [
 export const DOLPHINS = [
   { id: 'dolphin', name: 'Bottlenose dolphin', min: 1, max: 25, value: 120, len: [2.2, 3], pod: [3, 9], weight: 1 },
 ];
+
+/** Bestiary page order (page number = index + 1). */
+export const BESTIARY = [...FISH, ...SQUID, ...SHARKS, ...MANTAS, ...DOLPHINS, ...ORCAS, ...GIANT_SQUID, ...WHALES];

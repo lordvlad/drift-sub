@@ -59,6 +59,30 @@
   #vfBar .ib { width: 46px; height: 46px; } #album button.ib { width: 40px; height: 40px; }
   #album button.ib.primary { background: #ffd21f; color: #06222f; }
   body.touch .ib { width: 44px; height: 44px; }
+  #bestiary { position: fixed; inset: 0; z-index: 20; background: #031420f2; backdrop-filter: blur(8px); display: flex; flex-direction: column; touch-action: auto; user-select: text; -webkit-user-select: text; }
+  #bestiary[hidden], #bPage[hidden] { display: none; }
+  .bbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 14px; }
+  #bCount, #bNum { opacity: .7; font-size: 13px; }
+  #bestiary button { font: inherit; color: #dff6ff; background: #ffffff1a; border: 1px solid #9fe3ff33; cursor: pointer; }
+  #bGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 4px 16px 24px; align-content: start; touch-action: pan-y; }
+  .bcard { position: relative; aspect-ratio: 4 / 3; border-radius: 12px !important; padding: 0 !important; overflow: hidden; display: grid; place-items: center; }
+  .bcard img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .bcard.locked { background: repeating-linear-gradient(135deg, #ffffff08 0 10px, #ffffff03 10px 20px) !important; border-style: dashed !important; }
+  .bno { position: absolute; left: 8px; top: 6px; font-size: 12px; font-weight: 700; z-index: 1; text-shadow: 0 1px 4px #000; }
+  .bname { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 8px 6px; font-size: 12px; text-align: left; background: linear-gradient(#0000, #000a); }
+  .bq { font-size: 34px; opacity: .35; } .bq.big { font-size: 80px; }
+  #bPage { position: absolute; inset: 0; z-index: 3; background: #021019; display: flex; flex-direction: column; }
+  #bBody { flex: 1; overflow-y: auto; padding: 4px 22px 40px; max-width: 860px; width: 100%; margin: 0 auto; box-sizing: border-box; line-height: 1.6; font-size: 15px; touch-action: pan-y; }
+  #bBody h2 { margin: 6px 0 0; font-weight: 500; font-size: 26px; } .bsci { font-style: italic; opacity: .7; margin-bottom: 8px; }
+  .bfacts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; } .bfacts span { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #ffffff14; }
+  .bimgs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+  .bimgs figure { margin: 0; } .bimgs img, .bweb { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; display: block; background: #ffffff0d; }
+  .bweb { display: grid; place-items: center; overflow: hidden; font-size: 12px; opacity: .85; } .bweb img { border-radius: 0; }
+  .bimgs figcaption { font-size: 11px; opacity: .6; margin-top: 4px; } #bBody a { color: #9fe3ff; }
+  .bfun { margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: #ffd21f1a; border-left: 3px solid #ffd21f; } .bfun b { color: #ffd21f; margin-right: 6px; }
+  .blinks { display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; }
+  .blocked { text-align: center; padding: 40px 10px; } .blocked p { opacity: .75; } .bhint { font-size: 13px; }
+  @media (max-width: 560px) { .bimgs { grid-template-columns: 1fr; } }
   #fsBanner { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 16px; font-size: 13px; background: #0b2f44cc; border: 1px solid #9fe3ff44; border-radius: 999px; backdrop-filter: blur(6px); animation: fsIn .8s ease both; }
   #fsBanner[hidden] { display: none; }
   #fsBanner button { font: inherit; font-size: 12px; color: #dff6ff; background: #ffffff1a; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
@@ -123,7 +147,7 @@
 <div id="hud"><div id="speed"></div></div>
 <div id="gauge"><div id="gHead">Units below sea level: <b id="gNow">0m</b></div><div id="gLim">Max dive depth <span id="gMax"></span></div>
   <div id="gRule"><div id="gDanger"></div><div id="gTicks"></div><div id="gMark"><span id="gVal"></span><i></i></div></div></div>
-<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="albumBtn" title="Snapshot album"></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)"></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="bookBtn" title="Bestiary"></button><button id="albumBtn" title="Snapshot album"></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)"></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
 <div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="fsBanner" hidden><span>Fullscreen is more immersive.</span><button id="fsGo">Go fullscreen</button><button id="fsX" aria-label="Dismiss">✕</button></div>
 <button id="snapBtn" title="Take snapshot (P)" aria-label="Take snapshot"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
@@ -139,6 +163,11 @@
   <div id="albumBar"><b>Album</b><span id="albumCount"></span><span id="albumCoins"></span><span class="sp"></span><button id="albumClose"></button></div>
   <div id="albumGrid"></div><div id="albumEmpty">No snapshots yet — press <kbd>P</kbd> or the camera button.</div>
   <div id="albumView" hidden><div id="viewMain"><img id="albumImg" alt="snapshot"></div><div id="viewBar"><button id="viewPrev" aria-label="Older"></button><span id="albumCap"></span><button id="viewNext" aria-label="Newer"></button><span class="sp"></span><button id="viewSell" class="primary"></button><button id="viewDl"></button><button id="viewDel"></button><button id="viewClose"></button></div></div>
+</div>
+<div id="bestiary" hidden>
+  <div class="bbar"><b>Bestiary</b><span id="bCount"></span><span class="sp"></span><button id="bClose"></button></div>
+  <div id="bGrid"></div>
+  <div id="bPage" hidden><div class="bbar"><button id="bBack"></button><span id="bNum"></span><span class="sp"></span><button id="bPrev"></button><button id="bNext"></button></div><article id="bBody"></article></div>
 </div>
 <div id="hint"></div>
 <div id="intro">

@@ -31,8 +31,8 @@ export function scorePhoto(ctx) {
     const frac = len / d / tanH;
     if (frac < minFrac) return false;
     const n = inView(camera, x, y, z, tmp); if (!n) return false;
-    let e = seen.get(sp.id); if (!e) seen.set(sp.id, e = { sp, kind, count: 0, frac: 0, cent: 0, cx: 0 });
-    e.count++; e.cx += n.x; e.frac = Math.max(e.frac, frac); e.cent += 1 - clamp(Math.hypot(n.x, n.y) / 1.2, 0, 1);
+    let e = seen.get(sp.id); if (!e) seen.set(sp.id, e = { sp, kind, count: 0, frac: 0, cent: 0, cx: 0, cy: 0 });
+    e.count++; e.cx += n.x; e.cy += n.y; e.frac = Math.max(e.frac, frac); e.cent += 1 - clamp(Math.hypot(n.x, n.y) / 1.2, 0, 1);
     return true;
   };
 
@@ -130,6 +130,7 @@ export function scorePhoto(ctx) {
   const key = 'k' + h.toString(36);
   return {
     value, key, species: names,
+    spots: [...seen.values()].filter((e) => e.kind !== 'calf').map((e) => ({ id: e.sp.id, x: e.cx / e.count, y: e.cy / e.count, frac: e.frac, school: e.count > 3 })),
     items: items.map(([label, amt, m]) => m ? [label, '×' + m.toFixed(2)] : [label, '+' + Math.round(amt)]),
   };
 }
