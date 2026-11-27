@@ -1,3 +1,5 @@
+import { ib } from './icons.js';
+
 const DB = 'drift-album', ST = 'shots';
 export const MAX_SHOTS = 100;
 
@@ -74,6 +76,8 @@ export class AlbumUI {
     this.store = store; this.wallet = wallet; this.onChange = onChange; this.say = say; this.urls = []; this.items = []; this.cur = -1; this.fullUrl = null;
     const $ = (id) => document.getElementById(id);
     this.root = $('album'); this.grid = $('albumGrid'); this.count = $('albumCount'); this.viewer = $('albumView'); this.img = $('albumImg'); this.cap = $('albumCap'); this.coins = $('albumCoins'); this.sellBtn = $('viewSell');
+    ib($('albumClose'), 'close', 'Close album'); ib($('viewClose'), 'back', 'Back to album'); ib($('viewPrev'), 'chevL', 'Older'); ib($('viewNext'), 'chevR', 'Newer');
+    ib($('viewDl'), 'download', 'Download'); ib($('viewDel'), 'trash', 'Delete'); ib($('viewSell'), 'coin', 'Sell this snapshot');
     $('albumClose').addEventListener('click', () => this.close());
     $('viewClose').addEventListener('click', () => this.closeViewer());
     $('viewPrev').addEventListener('click', () => this.show(this.cur + 1));   // list is newest-first: "previous" = older

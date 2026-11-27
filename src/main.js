@@ -13,6 +13,7 @@ import { Daylight } from './daylight.js';
 import { Store, AlbumUI, Wallet, MAX_SHOTS } from './album.js';
 import { scorePhoto } from './photo.js';
 import { drawCracks } from './cracks.js';
+import { ib, svg } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -47,8 +48,8 @@ const quality = matchMedia('(pointer: coarse)').matches ? 0.7 : 1;
 const fauna = new Fauna(scene, field, quality);
 const audio = new Audio();
 const weather = new Weather(() => {
-  $('waveBtn').textContent = 'Waves: ' + (weather.mode === 'auto' ? `auto (${weather.state}${weather.status === 'locating' ? '…' : weather.status === 'unavailable' ? ', drifting' : ''})` : weather.mode);
-  $('waveBtn').title = weather.mode === 'auto' ? 'Sea state from local wind: ' + weather.status : 'Manual sea state';
+  const auto = weather.mode === 'auto', st = weather.status;
+  ib($('waveBtn'), weather.state, auto ? `Waves: auto — ${weather.state}${st === 'locating' ? ' (locating…)' : st === 'unavailable' ? ' (drifting, no weather data)' : ` (${st})`}. Click to override` : `Waves: ${weather.state}. Click to change`, { auto });
 });
 
 const [sx, sz] = field.findStart();
@@ -62,7 +63,7 @@ const ui = {
   joy: $('joy'), knob: $('knob'), btnUp: $('btnUp'), btnDown: $('btnDown'),
   applyMode(mode, touch) {
     document.body.classList.toggle('touch', touch);
-    $('modeBtn').textContent = 'Controls: ' + (mode === 'auto' ? `auto (${touch ? 'touch' : 'keys'})` : mode === 'touch' ? 'touch' : 'keys + mouse');
+    ib($('modeBtn'), touch ? 'touch' : 'keys', 'Controls: ' + (mode === 'auto' ? `auto (${touch ? 'touch' : 'keyboard + mouse'})` : mode === 'touch' ? 'touch' : 'keyboard + mouse') + '. Click to switch', { auto: mode === 'auto' });
     setIntroText(touch);
   },
 };
@@ -73,18 +74,20 @@ function setIntroText(touch) {
     ? 'Left lever: thrust forward &amp; reverse.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
     : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps &nbsp; <kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
 }
-$('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.target.blur(); });
-$('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); e.target.textContent = 'Sound: ' + (audio.muted ? 'off' : 'on'); e.target.blur(); });
-$('waveBtn').addEventListener('click', (e) => { weather.cycle(); e.target.blur(); });
+$('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.currentTarget.blur(); });
+const soundIcon = () => ib($('soundBtn'), audio.muted ? 'soundOff' : 'soundOn', 'Sound: ' + (audio.muted ? 'off' : 'on'));
+soundIcon();
+$('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); e.target.textContent = 'Sound: ' + (audio.muted ? 'off' : 'on'); e.currentTarget.blur(); });
+$('waveBtn').addEventListener('click', (e) => { weather.cycle(); e.currentTarget.blur(); });
 weather.onChange();
-const daylight = new Daylight(() => { $('timeBtn').textContent = 'Time: ' + (daylight.mode === 'auto' ? `auto (${daylight.phase})` : daylight.mode); });
+const daylight = new Daylight(() => { const ph = daylight.phase; ib($('timeBtn'), { night: 'moon', dawn: 'sunrise', morning: 'sunrise', day: 'sun', evening: 'sunset' }[ph], daylight.mode === 'auto' ? `Time: auto (${ph}, your clock). Click to override` : `Time: ${daylight.mode}. Click to change`, { auto: daylight.mode === 'auto' }); });
 daylight.onChange();
 const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
-const lampLabel = () => { $('lampBtn').textContent = 'Lamps: ' + lampMode; $('vfLamp').textContent = 'Lamps: ' + lampMode; };
+const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`, { auto: lampMode === 'auto' }); };
 const cycleLamps = () => { lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); };
 lampLabel();
-$('timeBtn').addEventListener('click', (e) => { daylight.cycle(); e.target.blur(); });
-$('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.target.blur(); });
+$('timeBtn').addEventListener('click', (e) => { daylight.cycle(); e.currentTarget.blur(); });
+$('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
 addEventListener('keydown', (e) => { if (e.code === 'KeyF' && !e.repeat) cycleLamps(); });
 $('tools').addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -101,9 +104,11 @@ if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.h
 const store = new Store(), wallet = new Wallet();
 const toastEl = $('toast'); let toastT = 0;
 function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
-const album = new AlbumUI(store, wallet, (n) => { $('albumBtn').textContent = `Album (${n})`; }, toast);
-store.list().then((l) => { $('albumBtn').textContent = `Album (${l.length})`; });
-$('albumBtn').addEventListener('click', (e) => { album.open(); e.target.blur(); });
+const album = new AlbumUI(store, wallet, (n) => albumIcon(n), toast);
+const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`, { badge: n }); ib($('vfAlbum'), 'album', `Album (${n})`, { badge: n }); };
+albumIcon(0); store.list().then((l) => albumIcon(l.length));
+ib($('vfExit'), 'close', 'Exit viewfinder (Esc)');
+$('albumBtn').addEventListener('click', (e) => { album.open(); e.currentTarget.blur(); });
 
 // viewfinder mode: aim the sub (turn only, no thrust), then press the shutter
 const VF_FOV = 58;
@@ -114,11 +119,11 @@ function setViewfinder(on) {
   vf = on; document.body.classList.toggle('vf', on); vfEl.hidden = !on;
   if (on) { if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock(); fsBanner.hidden = true; }
 }
-$('snapBtn').addEventListener('click', (e) => { setViewfinder(true); e.target.blur(); });
+$('snapBtn').addEventListener('click', (e) => { setViewfinder(true); e.currentTarget.blur(); });
 $('vfExit').addEventListener('click', () => setViewfinder(false));
 $('vfAlbum').addEventListener('click', () => { setViewfinder(false); album.open(); });
-$('vfLamp').addEventListener('click', (e) => { cycleLamps(); e.target.blur(); });
-$('shutter').addEventListener('click', (e) => { wantSnap = true; e.target.blur(); });
+$('vfLamp').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
+$('shutter').addEventListener('click', (e) => { wantSnap = true; e.currentTarget.blur(); });
 addEventListener('keydown', (e) => {
   if (album.isOpen || e.repeat) return;
   if (e.code === 'KeyP') setViewfinder(!vf);
@@ -171,7 +176,7 @@ async function finishSnapshot({ buf, w, h, meta, score, damage }) {
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
   const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
-  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species }); const n = (await store.list()).length; $('albumBtn').textContent = `Album (${n})`; toast(`Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
+  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species }); const n = (await store.list()).length; albumIcon(n); toast(`Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
   catch { toast('Could not save snapshot (storage full?)'); }
 }
 

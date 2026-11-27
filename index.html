@@ -54,6 +54,13 @@
   #gMark i { position: absolute; left: -9px; top: -6px; border: 5px solid transparent; border-left: 8px solid var(--c); }
   #gVal { position: absolute; left: 36px; top: -11px; font-size: 16px; font-weight: 700; white-space: nowrap; background: #0a3a55aa; border-radius: 6px; padding: 0 6px; }
   body.touch #gauge { top: 36%; transform: translateY(-50%) scale(.7); transform-origin: left center; }
+  .ib { position: relative; width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; display: inline-grid; place-items: center; line-height: 0; }
+  .ib svg { display: block; }
+  .ib[data-auto]::after { content: 'A'; position: absolute; right: -1px; bottom: -1px; width: 15px; height: 15px; border-radius: 50%; background: #ffd21f; color: #06222f; font-size: 9px; font-weight: 800; line-height: 15px; text-align: center; }
+  .ib b { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #ffd21f; color: #06222f; font-size: 10px; font-weight: 800; line-height: 17px; text-align: center; box-sizing: border-box; }
+  #vfBar .ib { width: 46px; height: 46px; } #album button.ib { width: 40px; height: 40px; }
+  #album button.ib.primary { background: #ffd21f; color: #06222f; }
+  body.touch .ib { width: 44px; height: 44px; }
   #fsBanner { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 16px; font-size: 13px; background: #0b2f44cc; border: 1px solid #9fe3ff44; border-radius: 999px; backdrop-filter: blur(6px); animation: fsIn .8s ease both; }
   #fsBanner[hidden] { display: none; }
   #fsBanner button { font: inherit; font-size: 12px; color: #dff6ff; background: #ffffff1a; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
@@ -116,7 +123,7 @@
 <div id="hud"><div id="speed"></div></div>
 <div id="gauge"><div id="gHead">Units below sea level: <b id="gNow">0m</b></div><div id="gLim">Max dive depth <span id="gMax"></span></div>
   <div id="gRule"><div id="gDanger"></div><div id="gTicks"></div><div id="gMark"><span id="gVal"></span><i></i></div></div></div>
-<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls">Controls: auto</button><button id="albumBtn" title="Snapshot album">Album (0)</button><button id="timeBtn" title="Time of day (auto = your clock)">Time: auto</button><button id="lampBtn" title="Headlights (F)">Lamps: auto</button><button id="waveBtn" title="Sea state">Waves: auto</button><button id="soundBtn">Sound: on</button></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="albumBtn" title="Snapshot album"></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)"></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
 <div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="fsBanner" hidden><span>Fullscreen is more immersive.</span><button id="fsGo">Go fullscreen</button><button id="fsX" aria-label="Dismiss">✕</button></div>
 <button id="snapBtn" title="Take snapshot (P)" aria-label="Take snapshot"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
@@ -125,13 +132,13 @@
   <canvas id="vfCracks"></canvas>
   <div id="vfFrame"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i><i class="g gv1"></i><i class="g gv2"></i><i class="g gh1"></i><i class="g gh2"></i><i id="vfCross"></i></div>
   <div id="vfTop"><span id="vfDepth"></span><span id="vfHint"></span></div>
-  <div id="vfBar"><button id="vfAlbum">Album</button><button id="vfLamp">Lamps: auto</button><button id="shutter" aria-label="Take photo"><i></i></button><button id="vfExit">Exit</button></div>
+  <div id="vfBar"><button id="vfAlbum"></button><button id="vfLamp"></button><button id="shutter" aria-label="Take photo"><i></i></button><button id="vfExit"></button></div>
 </div>
 <div id="flash"></div><div id="toast"></div>
 <div id="album" hidden>
-  <div id="albumBar"><b>Album</b><span id="albumCount"></span><span id="albumCoins"></span><span class="sp"></span><button id="albumClose">Close</button></div>
+  <div id="albumBar"><b>Album</b><span id="albumCount"></span><span id="albumCoins"></span><span class="sp"></span><button id="albumClose"></button></div>
   <div id="albumGrid"></div><div id="albumEmpty">No snapshots yet — press <kbd>P</kbd> or the camera button.</div>
-  <div id="albumView" hidden><div id="viewMain"><img id="albumImg" alt="snapshot"></div><div id="viewBar"><button id="viewPrev" aria-label="Older">‹</button><span id="albumCap"></span><button id="viewNext" aria-label="Newer">›</button><span class="sp"></span><button id="viewSell" class="primary">Sell</button><button id="viewDl">Download</button><button id="viewDel">Delete</button><button id="viewClose">Back</button></div></div>
+  <div id="albumView" hidden><div id="viewMain"><img id="albumImg" alt="snapshot"></div><div id="viewBar"><button id="viewPrev" aria-label="Older"></button><span id="albumCap"></span><button id="viewNext" aria-label="Newer"></button><span class="sp"></span><button id="viewSell" class="primary"></button><button id="viewDl"></button><button id="viewDel"></button><button id="viewClose"></button></div></div>
 </div>
 <div id="hint"></div>
 <div id="intro">

@@ -4,6 +4,7 @@ A quiet underwater exploration toy: steer a small yellow submarine through an en
 
 - **Desktop:** `W`/`S` thrust, `A`/`D` turn, mouse to steer (click to capture), `Space` rise, `C` dive, `Shift` burst.
 - **Waves:** sea state follows your local wind (Open-Meteo, location rounded to ~11 km, never stored); falls back to a slow random drift if location is denied or offline. The "Waves" button cycles auto → still → calm → windy → gusty → stormy.
+- **Controls UI:** every control is an icon button (hover for the label); an "A" badge means automatic mode (controls, time from your clock, lamps, waves from local wind), the album icon carries the snapshot count.
 - **Light:** time of day follows your clock (dawn, morning, day, evening, night hues; "Time" button overrides). Twin headlights: `F` or the "Lamps" button cycles auto (on when dark or deep) / on / off.
 - **Fullscreen:** a dismissible banner suggests it a few seconds after diving (hidden where the Fullscreen API is missing, e.g. iPhone Safari).
 - **PWA:** installable (manifest + service worker; works offline after the first visit). Add `?nosw` to skip the service worker.
