@@ -3,8 +3,10 @@ import { createField } from './world.js';
 import { buildTemplates } from './templates.js';
 import { Terrain, CS } from './terrain.js';
 import { makeTerrainMaterial, makeDecorMaterial, shared } from './materials.js';
-import { Sub, MAX_DEPTH } from './sub.js';
+import { Sub } from './sub.js';
 import { createSubModel } from './subs.js';
+import { Fleet, SUBS } from './fleet.js';
+import { ShopUI } from './shop.js';
 import { Bubbles, Snow, Shafts, Surface } from './effects.js';
 import { Fauna } from './fauna.js';
 import { Input } from './input.js';
@@ -43,8 +45,12 @@ function resize() {
 const field = createField(seed);
 const templates = buildTemplates();
 const terrain = new Terrain(scene, field, templates, seed, makeTerrainMaterial(), makeDecorMaterial());
-const subModel = createSubModel(); scene.add(subModel.group);
-const sub = new Sub(subModel);
+const fleet = new Fleet();
+const models = {};   // one 3D model per sub, built on first use; only the active one is in the scene
+const modelOf = (id) => models[id] ||= createSubModel(id);
+let subModel = modelOf(fleet.active); scene.add(subModel.group);
+const sub = new Sub(subModel); fleet.bind(sub);
+let fst = fleet.stats(); sub.setStats(fst);   // effective stats of the active sub (upgrades included)
 const bubbles = new Bubbles(scene), snow = new Snow(scene), shafts = new Shafts(scene), surface = new Surface(scene);
 const quality = matchMedia('(pointer: coarse)').matches ? 0.7 : 1;
 const fauna = new Fauna(scene, field, quality);
@@ -71,10 +77,10 @@ const ui = {
 };
 const input = new Input(canvas, ui);
 function setIntroText(touch) {
-  $('vfHint').textContent = touch ? 'drag to aim' : 'mouse / A D to aim · Space or Enter to shoot · Esc to exit';
+  $('vfHint').textContent = touch ? 'drag to aim' : 'mouse / A D to aim · Space or Enter to shoot · Esc to exit' + (fst.zoomLevels.length > 1 ? ' · wheel or + − to zoom' : '');
   $('introText').innerHTML = touch
-    ? 'Left lever: thrust forward &amp; reverse.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
-    : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps &nbsp; <kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
+    ? `Left ${fst.lateral ? 'joystick: thrust forward &amp; reverse, strafe sideways' : 'lever: thrust forward &amp; reverse'}.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. The cart button is the shop. Nothing to find, nowhere to be.`
+    : `<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; ${fst.lateral ? '<kbd>Q</kbd> <kbd>E</kbd> strafe &nbsp; ' : ''}${fst.hasLamp ? '<kbd>F</kbd> lamps &nbsp; ' : ''}<kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. The cart button is the shop. Nothing to find, nowhere to be.`;
 }
 $('modeBtn').addEventListener('click', (e) => { input.cycleMode(); say(`controls: ${modeLabel()}`); e.currentTarget.blur(); });
 // toggle feedback goes to the same quiet line as the other calming notes
@@ -92,7 +98,7 @@ const daylight = new Daylight(() => { const ph = daylight.phase; ib($('timeBtn')
 daylight.onChange();
 const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
 const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`); };
-const cycleLamps = () => { lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); say(`lamps ${lampMode}`); };
+const cycleLamps = () => { if (!fst.hasLamp) return; lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); say(`lamps ${lampMode}`); };
 lampLabel();
 $('timeBtn').addEventListener('click', (e) => { daylight.cycle(); say(`time ${timeLabel()}`); e.currentTarget.blur(); });
 $('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
@@ -119,31 +125,59 @@ const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`); ib($('vfA
 albumIcon(0); store.list().then((l) => albumIcon(l.length));
 ib($('vfExit'), 'close', 'Exit viewfinder (Esc)');
 $('albumBtn').addEventListener('click', (e) => { album.open(); e.currentTarget.blur(); });
+const shop = new ShopUI(fleet, wallet, { toast, onSwitch: (id) => swapSub(id) });
+ib($('shopBtn'), 'cart', 'Shop');
+$('shopBtn').addEventListener('click', (e) => { setViewfinder(false); shop.open(); e.currentTarget.blur(); });
 
 // viewfinder mode: aim the sub (turn only, no thrust), then press the shutter
 const VF_FOV = 58;
+// zoom objective: 2x / 4x narrow the viewfinder so that the subject appears 2x / 4x larger (tan(fov/2) / zoom)
+let zoom = 1, vfFovNow = VF_FOV, lastShot = null;
+const zoomFov = (z) => THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(VF_FOV) / 2) / z));
+const zoomLabel = () => ib($('vfZoom'), 'zoom', `Zoom ${zoom}× (click, mouse wheel or + / − to change)`);
+function setZoom(z) {
+  if (!fst.zoomLevels.includes(z)) z = 1;
+  if (z === zoom) return;
+  zoom = z; zoomLabel(); say(`zoom ${z}×`);
+}
+/** dir +1 / -1 steps within the owned levels; 0 cycles (and wraps) */
+function stepZoom(dir) {
+  const lv = fst.zoomLevels, i = lv.indexOf(zoom);
+  if (lv.length < 2) return;
+  setZoom(dir === 0 ? lv[(i + 1) % lv.length] : lv[Math.min(lv.length - 1, Math.max(0, i + dir))]);
+}
 let vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
 const vfEl = $('vf');
 function setViewfinder(on) {
-  if (on === vf || (on && (!started || album.isOpen))) return;
+  if (on === vf || (on && (!started || album.isOpen || shop.isOpen))) return;
   vf = on; document.body.classList.toggle('vf', on); vfEl.hidden = !on;
   if (on) { if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock(); fsBanner.hidden = true; }
+  else if (zoom !== 1) { zoom = 1; zoomLabel(); }   // back out of the viewfinder = back to 1x
 }
 $('snapBtn').addEventListener('click', (e) => { setViewfinder(true); e.currentTarget.blur(); });
 $('vfExit').addEventListener('click', () => setViewfinder(false));
 $('vfAlbum').addEventListener('click', () => { setViewfinder(false); album.open(); });
 $('vfLamp').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
+$('vfZoom').addEventListener('click', (e) => { stepZoom(0); e.currentTarget.blur(); });
+let wheelT = 0;
+addEventListener('wheel', (e) => {
+  if (!vf || album.isOpen || shop.isOpen) return;
+  e.preventDefault(); const now = performance.now(); if (now - wheelT < 160) return;
+  wheelT = now; stepZoom(e.deltaY < 0 ? 1 : -1);
+}, { passive: false });
 $('shutter').addEventListener('click', (e) => { wantSnap = true; e.currentTarget.blur(); });
 addEventListener('keydown', (e) => {
-  if (album.isOpen || bestiary.isOpen || e.repeat) return;
+  if (album.isOpen || bestiary.isOpen || shop.isOpen || e.repeat) return;
   if (e.code === 'KeyP') setViewfinder(!vf);
   else if (vf && e.code === 'Escape') setViewfinder(false);
   else if (vf && (e.code === 'Enter' || e.code === 'Space')) wantSnap = true;
+  else if (vf && (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '+')) stepZoom(1);
+  else if (vf && (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-')) stepZoom(-1);
 });
 // while framing a shot the sub may turn but never accelerates
 const vfInput = {
-  get thrust() { return 0; }, get turn() { return input.turn; }, rise: 0, boost: false,
-  get sens() { return input.sens * 0.55; }, takeLookX: () => input.takeLookX(), takeLookY: () => input.takeLookY(),
+  get thrust() { return 0; }, get turn() { return input.turn / zoom; }, rise: 0, strafe: 0, boost: false,   // while framing a shot the sub never moves sideways either
+  get sens() { return input.sens * 0.55 / zoom; }, takeLookX: () => input.takeLookX(), takeLookY: () => input.takeLookY(),
 };
 const snapCam = new THREE.PerspectiveCamera(VF_FOV, 1, 0.1, 320), q180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 const _eul = new THREE.Euler(0, 0, 0, 'YXZ'), _vq = new THREE.Quaternion(), _vp = new THREE.Vector3();
@@ -162,7 +196,7 @@ function captureSnapshot() {
   }
   // camera at the sub's viewport, looking where the sub points
   const g = subModel.group; g.updateMatrixWorld(true);
-  snapCam.aspect = w / h; snapCam.updateProjectionMatrix();
+  snapCam.fov = zoomFov(zoom); snapCam.aspect = w / h; snapCam.updateProjectionMatrix(); lastShot = { fov: snapCam.fov, zoom };
   vfPose(snapCam.position, snapCam.quaternion); snapCam.updateMatrixWorld(true);
   // hide the sub's own meshes (lights stay on); point sizes/uniforms are re-aimed at the snapshot camera
   const hidden = []; g.traverse((o) => { if (o.isMesh && o.visible) { o.visible = false; hidden.push(o); } });
@@ -230,7 +264,7 @@ function updateWater(camY, dt) {
   scene.fog.density = 0.0125 + 0.003 * k;
   hemi.intensity = L.hemiI * W.dim * (1 - 0.55 * k); hemi.color.copy(L.sky).lerp(tmpC, 0.2);
   sun.intensity = L.sunI * W.dim * (1 - 0.8 * k); sun.color.copy(L.sun);
-  const lampTarget = lampMode === 'on' ? 1 : lampMode === 'off' ? 0 : clamp(k * 1.5 - 0.1 + daylight.darkness * 1.3, 0, 1);
+  const lampTarget = !fst.hasLamp ? 0 : lampMode === 'on' ? 1 : lampMode === 'off' ? 0 : clamp(k * 1.5 - 0.1 + daylight.darkness * 1.3, 0, 1);
   lampLevel += (lampTarget - lampLevel) * (1 - Math.exp(-dt * 3)); subModel.setLamps(lampLevel);
   surface.u.uFog.value.copy(tmpC); surface.u.uDensity.value = scene.fog.density;
   shafts.u.uInt.value = L.shaft * (1 - 0.75 * k) * (W.dim < 0.7 ? 0.5 : 1) * (1 + W.gust * 0.3);
@@ -243,22 +277,55 @@ function updateWater(camY, dt) {
 
 // ---------- depth gauge ----------
 const gTicks = $('gTicks'), gMark = $('gMark'), gauge = $('gauge');
-$('gMax').textContent = MAX_DEPTH + 'm';
-for (let m = 0; m <= MAX_DEPTH; m += 5) {
-  const t = document.createElement('div'); t.style.top = (m / MAX_DEPTH * 100) + '%'; if (m % 10 === 0) { t.className = 'maj'; if (m) t.innerHTML = `<span>${m}m</span>`; }
-  gTicks.appendChild(t);
+let gShown = '', gaugeMax = 0;
+/** the scale always spans 0 .. the active sub's maximum dive depth (rebuilt when the sub or its hull changes) */
+function buildGauge(maxD) {
+  gaugeMax = maxD; gShown = ''; gTicks.textContent = '';
+  for (let m = 0; m <= maxD; m += 5) {
+    const t = document.createElement('div'); t.style.top = (m / maxD * 100) + '%'; if (m % 10 === 0) { t.className = 'maj'; if (m) t.innerHTML = `<span>${m}m</span>`; }
+    gTicks.appendChild(t);
+  }
 }
-let gShown = '';
 function updateGauge() {
-  const d = clamp(-sub.pos.y, 0, MAX_DEPTH);
-  gMark.style.top = (d / MAX_DEPTH * 100) + '%';
+  const d = clamp(-sub.pos.y, 0, gaugeMax);
+  gMark.style.top = (d / gaugeMax * 100) + '%';
   const txt = d.toFixed(1), red = sub.limit > 0.01;
   if (txt !== gShown) { gShown = txt; $('gVal').textContent = '-' + txt + 'm'; $('gNow').textContent = Math.round(d) + 'm'; }
   gauge.classList.toggle('red', red);
   const em = Math.round(sub.maxDepth);
-  $('gDanger').style.height = ((MAX_DEPTH - sub.maxDepth + 8) / MAX_DEPTH * 100) + '%';
-  $('gMax').textContent = em + 'm' + (em < MAX_DEPTH - 1 ? ' (damaged)' : '') + (sub.limit > 0.95 ? ' — limit reached' : '');
+  $('gDanger').style.height = ((gaugeMax - sub.maxDepth + 8) / gaugeMax * 100) + '%';
+  $('gMax').textContent = em + 'm' + (em < gaugeMax - 1 ? ' (damaged)' : '') + (sub.limit > 0.95 ? ' — limit reached' : '');
 }
+
+// ---------- fleet wiring: active stats, model swap, shop-driven controls ----------
+function applyFleet() {
+  fst = fleet.stats(); sub.setStats(fst);
+  if (fst.maxDepth !== gaugeMax) buildGauge(fst.maxDepth);
+  input.setLateral(fst.lateral);
+  for (const id of ['lampBtn', 'vfLamp']) $(id).hidden = !fst.hasLamp;   // no flashlight yet: no lamp buttons, F does nothing
+  $('vfZoom').hidden = fst.zoomLevels.length < 2; if (!fst.zoomLevels.includes(zoom)) zoom = 1; zoomLabel();
+  $('swapBtn').hidden = fleet.owned.length < 2;
+  ib($('swapBtn'), 'swap', `Switch submarine (now ${fst.name})`);
+  setIntroText(input.touchUI);
+}
+const note = (m) => shop.isOpen ? toast(m) : say(m);   // the quiet line sits under the shop overlay
+/** Swap the active submarine: new model in place (position, heading and velocity kept), new stats, items and damage. */
+function swapSub(id) {
+  if (id === fleet.active || !fleet.owns(id)) return false;
+  const to = SUBS[id], limit = fleet.stats(id).maxDepth * (1 - 0.6 * fleet.damageOf(id));
+  if (-sub.pos.y > limit - 3) { note(`too deep for ${to.name} — rise first`); return false; }
+  const old = subModel; old.setHidden(false); old.setLamps(0); scene.remove(old.group);
+  subModel = modelOf(id); scene.add(subModel.group);
+  subModel.group.position.copy(old.group.position); subModel.group.rotation.copy(old.group.rotation);
+  sub.setModel(subModel);
+  fleet.switchTo(id);   // moves hull damage to the new sub, then applyFleet() applies its stats
+  lampLevel = 0;
+  note(`sub: ${to.name}`);
+  return true;
+}
+fleet.onChange(applyFleet);
+$('swapBtn').addEventListener('click', (e) => { swapSub(fleet.next()); e.currentTarget.blur(); });
+buildGauge(fst.maxDepth); applyFleet();
 
 // ---------- loop ----------
 const hurtEl = $('hurt'); let seenHits = 0, crackKey = '';
@@ -311,7 +378,8 @@ function frame(now) {
     camera.position.lerp(_vp, vfBlend); camera.quaternion.slerp(_vq, vfBlend);
   }
   subModel.setHidden(vfBlend > 0.75);
-  const fov = baseFov + (VF_FOV - baseFov) * vfBlend;
+  vfFovNow += (zoomFov(zoom) - vfFovNow) * (1 - Math.exp(-dt * 10));
+  const fov = baseFov + (vfFovNow - baseFov) * vfBlend;
   if (Math.abs(fov - camera.fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 
   weather.update(dt);
@@ -336,13 +404,17 @@ function frame(now) {
   hurtEl.style.opacity = (glow * (sub.damage > 0.4 ? 0.9 + 0.1 * Math.sin(t * 2.4) : 1)).toFixed(3);
   if (sub.hurtFlash > 0.02) { const k = sub.hurtFlash * sub.hurtFlash * 0.12; camera.position.x += (Math.random() - 0.5) * k; camera.position.y += (Math.random() - 0.5) * k; }
   if (vf) { const q = Math.round(sub.damage * 100) + ':' + innerWidth + 'x' + innerHeight; if (q !== crackKey) { crackKey = q; const c = $('vfCracks'); c.width = innerWidth; c.height = innerHeight; drawCracks(c.getContext('2d'), c.width, c.height, sub.damage); } }
-  if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}`; }
+  if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}${zoom > 1 ? ` · ${zoom}×` : ''}`; }
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
   renderer.render(scene, camera);
 }
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = { bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+window.__sim = {
+  bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed,
+  fleet, shop, swapSub, setZoom, stepZoom, snapCam,
+  get zoom() { return zoom; }, get lastShot() { return lastShot; }, get stats() { return fst; },
+};
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !params.has('nosw')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

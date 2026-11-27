@@ -51,6 +51,7 @@ export class Wallet {
   }
   _save() { try { localStorage.setItem('drift-pearls', String(this.n)); localStorage.setItem('drift-sold', JSON.stringify([...this.sold])); } catch {} }
   add(v) { this.n += v; this._save(); }
+  spend(v) { if (this.n < v) return false; this.n -= v; this._save(); return true; }
   repeats(key) { return key ? this.sold.get(key) || 0 : 0; }
   mult(key) { return Math.max(0.1, Math.pow(0.55, this.repeats(key))); }
   price(rec) { return Math.max(1, Math.round((rec.value ?? 2) * this.mult(rec.key))); }

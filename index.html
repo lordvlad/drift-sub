@@ -34,6 +34,11 @@
   #joy::before, #joy::after { position: absolute; left: 0; right: 0; text-align: center; font-size: 18px; opacity: .55; pointer-events: none; }
   #joy::before { content: '+'; top: 6px; } #joy::after { content: '\2212'; bottom: 6px; }
   #knob { width: 52px; height: 52px; border-radius: 50%; background: #ffd21fcc; box-shadow: 0 4px 16px #0006; pointer-events: none; }
+  #joy b { display: none; position: absolute; top: 50%; margin-top: -11px; font-size: 16px; opacity: .55; pointer-events: none; font-weight: 400; }
+  #joy .jl { left: 9px; } #joy .jr { right: 9px; }
+  body.lat #joy { width: 172px; border-radius: 86px; }
+  body.lat #joy b { display: block; }
+  button[hidden] { display: none !important; }
   .vbtn { position: absolute; right: max(22px, env(safe-area-inset-right)); width: 64px; height: 64px; border-radius: 50%; background: #0b2f4466; border: 1px solid #9fe3ff55; color: #dff6ff; font-size: 22px; display: grid; place-items: center; pointer-events: auto; touch-action: none; backdrop-filter: blur(4px); }
   .vbtn.on { background: #ffd21f99; }
   #btnUp { bottom: calc(max(26px, env(safe-area-inset-bottom)) + 76px); }
@@ -132,6 +137,23 @@
   #viewMain { flex: 1; min-height: 0; display: flex; }
   #albumImg { flex: 1; min-width: 0; min-height: 0; object-fit: contain; }
   #albumCoins { color: #ffd21f; font-size: 13px; }
+  #shop { position: fixed; inset: 0; z-index: 20; background: #031420f2; backdrop-filter: blur(8px); display: flex; flex-direction: column; touch-action: auto; }
+  #shop[hidden] { display: none; }
+  #shopBar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 14px; }
+  #shopCoins { color: #ffd21f; font-size: 13px; }
+  #shop button { font: inherit; font-size: 13px; color: #dff6ff; background: #ffffff1a; border: 1px solid #9fe3ff33; border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  #shop button.ib { padding: 0; }
+  #shopBody { flex: 1; overflow-y: auto; padding: 4px 16px 40px; max-width: 760px; width: 100%; margin: 0 auto; touch-action: pan-y; user-select: text; -webkit-user-select: text; }
+  #shopBody h2 { margin: 18px 0 2px; font-weight: 500; font-size: 20px; }
+  .snote { margin: 0 0 10px; opacity: .6; font-size: 12px; }
+  .srow { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin-bottom: 8px; border-radius: 12px; background: #ffffff0f; border: 1px solid #9fe3ff22; }
+  .srow.cur { border-color: #ffd21f88; background: #ffd21f12; }
+  .smain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+  .smain b { font-weight: 600; font-size: 14px; } .smain span { opacity: .75; } .smain em { font-style: normal; font-size: 12px; color: #9fe3ff; }
+  #shop .sbtn { min-width: 96px; flex: none; }
+  #shop .sbtn.buy:not(:disabled) { background: #ffd21f; color: #06222f; border: 0; font-weight: 600; }
+  #shop .sbtn:disabled { opacity: .45; cursor: default; }
+  #shop .sbtn.owned:disabled { opacity: .7; }
   .thumb { position: relative; }
   @media (max-width: 640px) {  }
   #viewBar { flex-wrap: wrap; }
@@ -147,8 +169,8 @@
 <div id="hud"><div id="speed"></div></div>
 <div id="gauge"><div id="gHead">Units below sea level: <b id="gNow">0m</b></div><div id="gLim">Max dive depth <span id="gMax"></span></div>
   <div id="gRule"><div id="gDanger"></div><div id="gTicks"></div><div id="gMark"><span id="gVal"></span><i></i></div></div></div>
-<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="bookBtn" title="Bestiary"></button><button id="albumBtn" title="Snapshot album"></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)"></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
-<div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="bookBtn" title="Bestiary"></button><button id="albumBtn" title="Snapshot album"></button><button id="shopBtn" title="Shop"></button><button id="swapBtn" title="Switch submarine" hidden></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)" hidden></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
+<div id="touchui"><div id="joy"><b class="jl">◀</b><b class="jr">▶</b><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="fsBanner" hidden><span>Fullscreen is more immersive.</span><button id="fsGo">Go fullscreen</button><button id="fsX" aria-label="Dismiss">✕</button></div>
 <button id="snapBtn" title="Take snapshot (P)" aria-label="Take snapshot"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
 <div id="hurt"></div>
@@ -156,7 +178,7 @@
   <canvas id="vfCracks"></canvas>
   <div id="vfFrame"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i><i class="g gv1"></i><i class="g gv2"></i><i class="g gh1"></i><i class="g gh2"></i><i id="vfCross"></i></div>
   <div id="vfTop"><span id="vfDepth"></span><span id="vfHint"></span></div>
-  <div id="vfBar"><button id="vfAlbum"></button><button id="vfLamp"></button><button id="shutter" aria-label="Take photo"><i></i></button><button id="vfExit"></button></div>
+  <div id="vfBar"><button id="vfAlbum"></button><button id="vfLamp" hidden></button><button id="vfZoom" hidden></button><button id="shutter" aria-label="Take photo"><i></i></button><button id="vfExit"></button></div>
 </div>
 <div id="flash"></div><div id="toast"></div>
 <div id="album" hidden>
@@ -168,6 +190,10 @@
   <div class="bbar"><b>Bestiary</b><span id="bCount"></span><span class="sp"></span><button id="bClose"></button></div>
   <div id="bGrid"></div>
   <div id="bPage" hidden><div class="bbar"><button id="bBack"></button><span id="bNum"></span><span class="sp"></span><button id="bPrev"></button><button id="bNext"></button></div><article id="bBody"></article></div>
+</div>
+<div id="shop" hidden>
+  <div id="shopBar"><b>Shop</b><span id="shopCoins"></span><span class="sp"></span><button id="shopClose"></button></div>
+  <div id="shopBody"></div>
 </div>
 <div id="hint"></div>
 <div id="intro">
