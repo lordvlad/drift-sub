@@ -270,7 +270,7 @@ function frame(now) {
 
   sub.update(dt, inp, terrain, field, fauna);
   terrain.update(sub.pos.x, sub.pos.z, 1);
-  fauna.update(dt, sub);
+  fauna.update(dt, sub, daylight.phase);
   bubbles.update(dt, t, sub.propPos, sub);
 
   // camera: lags the sub's heading, pulls back with speed

@@ -5,6 +5,24 @@ import { FISH, SHARKS, WHALES, SQUID, GIANT_SQUID, MANTAS, ORCAS, DOLPHINS, pick
 
 const R = (a, b) => a + Math.random() * (b - a);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+/** How alarming the sub is at a given distance: grows steeply with its speed, so a slow approach allows close-ups. 0..1 */
+export function alarm(sub, x, y, z, sens = 1) {
+  const r = (3 + Math.pow(sub.speed, 1.4) * 3.2) * sens, d = Math.hypot(x - sub.pos.x, y - sub.pos.y, z - sub.pos.z);
+  return d < r ? 1 - d / r : 0;
+}
+/** Activity by time of day: >1 means seen more often. */
+const ACTIVITY = {
+  shark:      { night: 1.8, dawn: 1.6, morning: 1, day: 0.7, evening: 1.6 },
+  whale:      { night: 0.8, dawn: 1, morning: 1.1, day: 1.1, evening: 1 },
+  manta:      { night: 0.4, dawn: 0.8, morning: 1.3, day: 1.4, evening: 0.9 },
+  giantsquid: { night: 2.5, dawn: 1.2, morning: 0.5, day: 0.4, evening: 1.3 },
+  dolphin:    { night: 0.3, dawn: 0.9, morning: 1.5, day: 1.3, evening: 1 },
+  orca:       { night: 0.8, dawn: 1.1, morning: 1, day: 1, evening: 1.2 },
+};
+// share of the fish-school pool that is out and about (reef fish hide in the coral at night); squid come up at night
+const FISH_OUT = { night: 0.5, dawn: 0.8, morning: 1, day: 1, evening: 0.85 };
+const SQUID_OUT = { night: 2, dawn: 2, morning: 1, day: 1, evening: 2 };
+const SQUID_W = { night: 4, dawn: 2, morning: 0.6, day: 0.5, evening: 2 };   // firefly squid weight multiplier
 const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 
 const pickCount = () => {
@@ -47,7 +65,7 @@ class Swarm {
       if (!best || score > best.s) best = { x, z, s: score };
     }
     const g = field.heightAt(best.x, best.z);
-    const sp = this.sp = pick(this.pool, -g - 1.5, (f) => f.habitat === this.type);
+    const sp = this.sp = pick(this.pool, -g - 1.5, (f) => f.habitat === this.type, (f) => (f.glow ? SQUID_W[this.phase] || 1 : 1));
     if (sp.count) this.n = Math.floor(R(sp.count[0], sp.count[1]));
     this.mat.emissive.set(sp.glow ? sp.colors[0] : 0x000000).multiplyScalar(sp.glow ? 0.45 : 0);
     this.size = (this.n > 100 ? 0.75 : 1) * R(sp.size[0], sp.size[1]);
@@ -126,7 +144,8 @@ class Swarm {
     const cm = Math.cos(mill), sm = Math.sin(mill);
     const maxSp = (open ? this.speed * 1.5 + 1.5 : 1.8 + this.n * 0.004) * boost;
     const arr = this.mesh.instanceMatrix.array;
-    const kd = 1 - Math.exp(-dt * 3), kdir = 1 - Math.exp(-dt * 6);
+    const dartR = 1.2 + Math.pow(sub.speed, 1.3) * 1.4, dartK = 1.5 + sub.speed * 2.2;
+    const kd = 1 - Math.exp(-dt * (3 + this.fear * 4)), kdir = 1 - Math.exp(-dt * 6);
     const spr = open ? this.spread : this.spread;
     for (let i = 0; i < this.n; i++) {
       const j = i * 3, a = t * this.W[i] + this.PH[i];
@@ -136,8 +155,15 @@ class Swarm {
       // heading frame: right = (ca,0,-sa), forward = (sa,0,ca)
       const tx = this.c.x + ox * ca + oz * sa, tz = this.c.z - ox * sa + oz * ca, ty = this.c.y + oy;
       let vx = this.vc.x + (tx - this.P[j]) * 1.7, vy = this.vc.y + (ty - this.P[j + 1]) * 1.7, vz = this.vc.z + (tz - this.P[j + 2]) * 1.7;
+      // individual fish dart away from a sub that comes at them quickly (scuttle); a slow sub can drift right up to them
+      const qx = this.P[j] - sub.pos.x, qy = this.P[j + 1] - sub.pos.y, qz = this.P[j + 2] - sub.pos.z, q2 = qx * qx + qy * qy + qz * qz;
+      let lim = maxSp;
+      if (q2 < dartR * dartR) {
+        const q = Math.sqrt(q2) || 0.01, push = (1 - q / dartR) * dartK;
+        vx += qx / q * push; vy += qy / q * push * 0.6; vz += qz / q * push; lim += push;
+      }
       const vm = Math.hypot(vx, vy, vz);
-      if (vm > maxSp) { const s = maxSp / vm; vx *= s; vy *= s; vz *= s; }
+      if (vm > lim) { const s = lim / vm; vx *= s; vy *= s; vz *= s; }
       this.V[j] += (vx - this.V[j]) * kd; this.V[j + 1] += (vy - this.V[j + 1]) * kd; this.V[j + 2] += (vz - this.V[j + 2]) * kd;
       this.P[j] += this.V[j] * dt; this.P[j + 1] += this.V[j + 1] * dt; this.P[j + 2] += this.V[j + 2] * dt;
       if ((i + frame) % 8 === 0) this.FL[i] = field.heightAt(this.P[j], this.P[j + 2]) + 0.5;
@@ -179,8 +205,14 @@ class Big {
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.set(-this.pitch, this.yaw, this.roll);
   }
-  despawn() { this.active = false; this.mesh.visible = false; this.timer = this.opts.nextDelay(); }
+  despawn() { this.active = false; this.mesh.visible = false; this.timer = this.opts.nextDelay(); this.fear = 0; }
   bandY(y, ground, margin) { return bandY(this.sp, y, ground, margin); }
+  /** smoothed fear of the sub; returns the bearing pointing away from it */
+  scare(sub, dt, sens) {
+    const f = alarm(sub, this.pos.x, this.pos.y, this.pos.z, sens);
+    this.fear = (this.fear || 0) + (f - (this.fear || 0)) * (1 - Math.exp(-dt * (f > (this.fear || 0) ? 3 : 0.4)));
+    return Math.atan2(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z);
+  }
   /** highest seabed under the next few lookahead points (hills ahead must be cleared early) */
   aheadGround(field, ax, az, dists) {
     let m = field.heightAt(this.pos.x, this.pos.z);
@@ -218,7 +250,9 @@ class Shark extends Big {
       const bearing = Math.atan2(dx, dz), off = THREE.MathUtils.lerp(0.05, 1.45, clamp(1 - (dist - 9) / 16, 0, 1));
       wantYaw = bearing + (this.side ??= Math.random() < 0.5 ? 1 : -1) * off;
     } else if (dist < 70 && Math.random() < dt * 0.01) this.cur = R(25, 50);
-    const target = clamp(angDiff(this.yaw, wantYaw), -1, 1) * 0.4;
+    const away = this.scare(sub, dt, 1.1);
+    if (this.fear > 0.05) { this.cur = 0; wantYaw = away; }
+    const target = clamp(angDiff(this.yaw, wantYaw), -1, 1) * (0.4 + this.fear * 1.2);
     this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * 0.8));
     this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
@@ -227,10 +261,11 @@ class Shark extends Big {
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.5);
     this.pitch += (clamp(dy / this.speed, -0.4, 0.7) - this.pitch) * (1 - Math.exp(-dt * 1.6));
     const cp = Math.cos(this.pitch);
-    this.pos.x += ax * cp * this.speed * dt; this.pos.z += az * cp * this.speed * dt; this.pos.y += Math.sin(this.pitch) * this.speed * dt;
+    const spd = this.speed * (1 + this.fear * 1.4);
+    this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.2 + 0.6);
     this.roll += (-this.yawRate * 1.3 - this.roll) * (1 - Math.exp(-dt * 2));
-    this.mat.userData.u.uFreq.value = 3 + this.speed * 0.9;
+    this.mat.userData.u.uFreq.value = 3 + spd * 0.9;
     this.place();
     if (Math.hypot(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z) > 190) this.despawn();
   }
@@ -264,7 +299,8 @@ class Whale extends Big {
   }
   update(dt, field, sub) {
     this.t += dt; const t = this.t;
-    const turn = 0.03 * Math.sin(t * 0.04) + 0.02 * Math.sin(t * 0.11);
+    const away = this.scare(sub, dt, 1.4);
+    const turn = 0.03 * Math.sin(t * 0.04) + 0.02 * Math.sin(t * 0.11) + clamp(angDiff(this.yaw, away), -1, 1) * 0.22 * this.fear;
     this.yaw += turn * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
     const gA = this.aheadGround(field, ax, az, [15, 30, 50, 80]);
@@ -272,7 +308,8 @@ class Whale extends Big {
     const dy = clamp((wantY - this.pos.y) * 0.12, -0.8, 1.4);
     this.pitch += (clamp(dy / this.speed, -0.2, 0.35) + Math.sin(t * 0.25) * 0.04 - this.pitch) * (1 - Math.exp(-dt * 0.9));
     const cp = Math.cos(this.pitch);
-    this.pos.x += ax * cp * this.speed * dt; this.pos.z += az * cp * this.speed * dt; this.pos.y += Math.sin(this.pitch) * this.speed * dt;
+    const spd = this.speed * (1 + this.fear * 0.35);   // whales cannot outrun the sub, they just lumber away
+    this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.18 + 1);
     this.roll = Math.sin(t * 0.2) * 0.05;
     this.place();
@@ -311,13 +348,14 @@ class Cruiser extends Big {
   }
   update(dt, field, sub) {
     const o = this.o; this.t += dt; const t = this.t;
-    const target = (0.16 * Math.sin(t * 0.09) + 0.1 * Math.sin(t * 0.23 + 2)) * o.turn;
-    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * 0.6));
+    const away = this.scare(sub, dt, o.shy);
+    const target = (0.16 * Math.sin(t * 0.09) + 0.1 * Math.sin(t * 0.23 + 2)) * o.turn + clamp(angDiff(this.yaw, away), -1, 1) * this.fear * 0.9;
+    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * (0.6 + this.fear * 2)));
     this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw), L = this.len;
     const gA = this.aheadGround(field, ax, az, [L * 0.5, L, L * 2, L * 3]);
     const wantY = this.bandY(Math.max(gA + o.alt[0] + (o.alt[1] - o.alt[0]) * (0.5 + 0.5 * Math.sin(t * 0.05)), gA + o.margin), gA, o.margin);
-    const sp = o.pulse ? this.speed * (0.45 + 1.1 * Math.pow(Math.max(0, Math.sin(t * 1.3)), 2)) : this.speed;
+    const sp = (o.pulse ? this.speed * (0.45 + 1.1 * Math.pow(Math.max(0, Math.sin(t * 1.3)), 2)) : this.speed) * (1 + this.fear * o.flee);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1, 2);
     this.pitch += (clamp(dy / Math.max(0.5, sp), -0.35, 0.6) - this.pitch) * (1 - Math.exp(-dt * 1.4));
     const cp = Math.cos(this.pitch);
@@ -340,7 +378,7 @@ class Pod {
     this.P = new Float32Array(max * 3); this.OFF = new Float32Array(max * 3); this.PH = new Float32Array(max); this.SC = new Float32Array(max);
     this.YAW = new Float32Array(max); this.PIT = new Float32Array(max);
     this.pos = new THREE.Vector3(); this.yaw = 0; this.pitch = 0; this.yawRate = 0; this.t = 0; this.n = 0;
-    this.active = false; this.timer = o.first();
+    this.active = false; this.timer = o.first(); this.fear = 0;
   }
   spawn(field, sub) {
     const o = this.o, a = Math.atan2(sub.fwd.x, sub.fwd.z) + R(-1.8, 1.8), d = R(110, 140);
@@ -369,8 +407,11 @@ class Pod {
   bandY(y, ground) { return bandY(this.sp, y, ground, this.len * 0.5 + 1.5); }
   update(dt, field, sub) {
     const o = this.o; this.t += dt; const t = this.t;
-    const target = 0.12 * Math.sin(t * 0.08) + 0.08 * Math.sin(t * 0.21 + 1);
-    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * 0.6)); this.yaw += this.yawRate * dt;
+    const f = alarm(sub, this.pos.x, this.pos.y, this.pos.z, o.shy);
+    this.fear += (f - this.fear) * (1 - Math.exp(-dt * (f > this.fear ? 3 : 0.4)));
+    const away = Math.atan2(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z);
+    const target = 0.12 * Math.sin(t * 0.08) + 0.08 * Math.sin(t * 0.21 + 1) + clamp(angDiff(this.yaw, away), -1, 1) * this.fear * 1.2;
+    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * (0.6 + this.fear * 2))); this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw), L = this.len;
     let gA = field.heightAt(this.pos.x, this.pos.z);
     for (const k of [1, 2, 4, 6]) gA = Math.max(gA, field.heightAt(this.pos.x + ax * L * k, this.pos.z + az * L * k));
@@ -378,7 +419,8 @@ class Pod {
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.2);
     this.pitch += (clamp(dy / this.speed, -0.35, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.4));
     const cp = Math.cos(this.pitch);
-    this.pos.x += ax * cp * this.speed * dt; this.pos.z += az * cp * this.speed * dt; this.pos.y += Math.sin(this.pitch) * this.speed * dt;
+    const spd = this.speed * (1 + this.fear * 0.9);
+    this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw), k = 1 - Math.exp(-dt * 1.6), arr = this.mesh.instanceMatrix.array;
     for (let i = 0; i < this.n; i++) {
       const j = i * 3, ox = this.OFF[j], oy = this.OFF[j + 1], oz = this.OFF[j + 2];
@@ -399,7 +441,7 @@ class Pod {
     this.mesh.instanceMatrix.needsUpdate = true;
     if (Math.hypot(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z) > 220) this.despawn();
   }
-  despawn() { this.active = false; this.mesh.count = 0; this.timer = this.o.next(); }
+  despawn() { this.active = false; this.mesh.count = 0; this.timer = this.o.next(); this.fear = 0; }
 }
 
 export class Fauna {
@@ -409,17 +451,18 @@ export class Fauna {
     this.swarms = [];
     const n = Math.round(14 * quality);
     for (let i = 0; i < n; i++) this.swarms.push(new Swarm(scene, fg));
+    this.nFish = n;
     const qg = squidGeometry();
     for (let i = 0; i < 2; i++) this.swarms.push(new Swarm(scene, qg, SQUID));
     this.cruisers = [
-      new Cruiser(scene, mantaGeometry(), MANTAS, { mat: { amp: 0.11, freq: 1.4, wave: 2.5, mode: 'flap' }, first: () => R(30, 90), next: () => R(70, 160),
+      new Cruiser(scene, mantaGeometry(), MANTAS, { kind: 'manta', shy: 1.2, flee: 1.2, mat: { amp: 0.11, freq: 1.4, wave: 2.5, mode: 'flap' }, first: () => R(30, 90), next: () => R(70, 160),
         speed: [1.6, 2.4], alt: [3, 14], margin: 2, clear: 0.12, turn: 1.2, bank: 1.6, exotic: 0.05 }),
-      new Cruiser(scene, qg, GIANT_SQUID, { mat: { amp: 0.05, freq: 1.2, wave: 4 }, first: () => R(60, 160), next: () => R(160, 360),
+      new Cruiser(scene, qg, GIANT_SQUID, { kind: 'giantsquid', shy: 1.5, flee: 1.6, mat: { amp: 0.05, freq: 1.2, wave: 4 }, first: () => R(60, 160), next: () => R(160, 360),
         speed: [1.2, 2], alt: [3, 12], margin: 3, clear: 0.1, turn: 0.8, bank: 0.5, exotic: 0.05, pulse: true }),
     ];
     this.pods = [
-      new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
-      new Pod(scene, orcaGeometry(), ORCAS, 6, { first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
+      new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { kind: 'dolphin', shy: 0.8, first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
+      new Pod(scene, orcaGeometry(), ORCAS, 6, { kind: 'orca', shy: 0.7, first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
     ];
     const sg = sharkGeometry();
     this.sharks = [0, 1, 2].map(() => new Shark(scene, sg));
@@ -438,30 +481,34 @@ export class Fauna {
     }
     this.sharks.forEach((s, i) => { s.timer = i === 0 ? 4 : R(25, 90); });
   }
-  update(dt, sub) {
-    this.frame++;
+  update(dt, sub, phase = 'day') {
+    this.frame++; this.phase = phase;
+    const rate = (k) => ACTIVITY[k][phase] ?? 1;
     const th = this.threats; th.length = 0;
-    th.push({ x: sub.pos.x, y: sub.pos.y, z: sub.pos.z, r: 4 + sub.speed * 0.9 });
+    th.push({ x: sub.pos.x, y: sub.pos.y, z: sub.pos.z, r: 2 + Math.pow(sub.speed, 1.5) * 2.2 });
     for (const s of this.sharks) if (s.active) th.push({ x: s.pos.x, y: s.pos.y, z: s.pos.z, r: 16 });
     for (const p of this.pods) if (p.active) th.push({ x: p.pos.x, y: p.pos.y, z: p.pos.z, r: p.sp.id === 'orca' ? 20 : 12 });
     for (const c of this.cruisers) if (c.active && c.sp.id === 'giantsquid') th.push({ x: c.pos.x, y: c.pos.y, z: c.pos.z, r: 12 });
-    for (const sw of this.swarms) {
-      if (!sw.active) { sw.spawn(this.field, sub); continue; }
-      const d = Math.hypot(sw.c.x - sub.pos.x, sw.c.z - sub.pos.z);
-      if (d > 165) { sw.spawn(this.field, sub); continue; }
+    const fishOut = Math.round(this.nFish * (FISH_OUT[phase] ?? 1)), squidOut = SQUID_OUT[phase] ?? 1;
+    for (let i = 0; i < this.swarms.length; i++) {
+      const sw = this.swarms[i]; sw.phase = phase;
+      const allowed = i < this.nFish ? i < fishOut : i - this.nFish < squidOut;
+      const d = sw.active ? Math.hypot(sw.c.x - sub.pos.x, sw.c.z - sub.pos.z) : 1e9;
+      if (!allowed) { if (sw.active && d > 110) sw.hide(); if (!sw.active) continue; }   // retire unseen, never pop out in view
+      else if (!sw.active || d > 165) { sw.spawn(this.field, sub); continue; }
       sw.update(dt, this.frame, this.field, sub, th);
     }
     for (const s of this.sharks) {
       if (s.active) s.update(dt, this.field, sub);
-      else { s.timer -= dt; if (s.timer <= 0) s.spawn(this.field, sub); }
+      else { s.timer -= dt * rate('shark'); if (s.timer <= 0) s.spawn(this.field, sub); }
     }
     for (const c of [...this.cruisers, ...this.pods]) {
       if (c.active) c.update(dt, this.field, sub);
-      else { c.timer -= dt; if (c.timer <= 0) c.spawn(this.field, sub); }
+      else { c.timer -= dt * rate(c.o.kind); if (c.timer <= 0) c.spawn(this.field, sub); }
     }
     const w = this.whale;
     if (w.active) w.update(dt, this.field, sub);
-    else { w.timer -= dt; if (w.timer <= 0) w.spawn(this.field, sub); }
+    else { w.timer -= dt * rate('whale'); if (w.timer <= 0) w.spawn(this.field, sub); }
     this.whaleLevel = w.active ? clamp(1 - w.pos.distanceTo(sub.pos) / 200, 0, 1) : 0;
   }
   /** Sphere-vs-whale (and calf) collision: body approximated by a chain of spheres along its axis. Returns the strongest impact speed (relative to the whale), 0 if none. */

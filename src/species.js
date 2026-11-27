@@ -37,11 +37,12 @@ export const WHALES = [
 ];
 
 /** Weighted pick among species whose shallowest depth is reachable (seabed deep enough). */
-export function pick(list, maxAvail, filter) {
+export function pick(list, maxAvail, filter, wmul) {
   let c = list.filter((s) => (!filter || filter(s)) && s.min <= maxAvail);
   if (!c.length) c = list.filter((s) => !filter || filter(s)).sort((a, b) => a.min - b.min).slice(0, 1);
-  let t = c.reduce((a, s) => a + s.weight, 0), r = Math.random() * t;
-  for (const s of c) { r -= s.weight; if (r <= 0) return s; }
+  const w = (s) => s.weight * (wmul ? wmul(s) : 1);
+  let t = c.reduce((a, s) => a + w(s), 0), r = Math.random() * t;
+  for (const s of c) { r -= w(s); if (r <= 0) return s; }
   return c[c.length - 1];
 }
 
