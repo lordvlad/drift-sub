@@ -7,6 +7,7 @@ A quiet underwater exploration toy: steer a small yellow submarine through an en
 - **Light:** time of day follows your clock (dawn, morning, day, evening, night hues; "Time" button overrides). Twin headlights: `F` or the "Lamps" button cycles auto (on when dark or deep) / on / off.
 - **Fullscreen:** a dismissible banner suggests it a few seconds after diving (hidden where the Fullscreen API is missing, e.g. iPhone Safari).
 - **PWA:** installable (manifest + service worker; works offline after the first visit). Add `?nosw` to skip the service worker.
+- **Snapshots:** `P` or the camera button captures what the sub sees (hull hidden, up to 1920 px, JPEG). The album keeps the newest 100 in IndexedDB on your device; open it from "Album", view, download or delete. Nothing is uploaded.
 - **Touch:** left stick = forward/back only, drag elsewhere to steer, ▲ ▼ rise/dive. The "Controls" button (top right) cycles auto / touch / keys.
 - World = pure function of `?seed=N`; only a 5×5 window of seabed chunks is ever in memory.
 

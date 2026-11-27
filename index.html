@@ -42,6 +42,28 @@
   #fsBanner #fsGo { background: #ffd21f; color: #06222f; }
   @keyframes fsIn { from { opacity: 0; transform: translate(-50%, 10px); } }
   body.touch #fsBanner { bottom: 18px; }
+  #snapBtn { position: fixed; right: 24px; bottom: 24px; width: 56px; height: 56px; border-radius: 50%; z-index: 5; display: grid; place-items: center; color: #dff6ff; background: #0b2f4466; border: 1px solid #9fe3ff66; backdrop-filter: blur(4px); cursor: pointer; padding: 0; }
+  #snapBtn:active { background: #ffd21f99; }
+  body.touch #snapBtn { right: calc(max(22px, env(safe-area-inset-right)) + 80px); bottom: max(26px, env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 8; }
+  #flash.go { animation: flash .45s ease-out; }
+  @keyframes flash { from { opacity: .75; } to { opacity: 0; } }
+  #toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); padding: 7px 16px; font-size: 13px; background: #0b2f44dd; border: 1px solid #9fe3ff44; border-radius: 999px; opacity: 0; transition: opacity .4s; pointer-events: none; z-index: 8; }
+  #toast.show { opacity: 1; }
+  #album { position: fixed; inset: 0; z-index: 20; background: #031420ee; backdrop-filter: blur(8px); display: flex; flex-direction: column; touch-action: auto; }
+  #album[hidden], #albumView[hidden] { display: none; }
+  #albumBar, #viewBar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 14px; }
+  .sp { flex: 1; }
+  #album button { font: inherit; font-size: 13px; color: #dff6ff; background: #ffffff1a; border: 1px solid #9fe3ff33; border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  #album button.primary { background: #ffd21f; color: #06222f; border: 0; }
+  #albumGrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 4px 16px 20px; align-content: start; touch-action: pan-y; }
+  .thumb { aspect-ratio: 16 / 10; background-size: cover; background-position: center; border-radius: 10px !important; border: 1px solid #9fe3ff33 !important; padding: 0 !important; }
+  #albumEmpty { display: none; margin: auto; opacity: .7; }
+  #album.empty #albumEmpty { display: block; }
+  #albumView { position: absolute; inset: 0; background: #020d16; display: flex; flex-direction: column; }
+  #albumImg { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+  #viewBar { flex-wrap: wrap; }
+  #albumCap { opacity: .7; font-size: 12px; }
   #hint { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); font-size: 13px; opacity: 0; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 6px #000a; letter-spacing: .05em; text-align: center; }
   #hint.show { opacity: .75; }
   body.touch #hint { bottom: auto; top: 54px; }
@@ -50,9 +72,16 @@
 <body>
 <canvas id="view"></canvas>
 <div id="hud"><div id="depth"></div><div id="speed"></div></div>
-<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls">Controls: auto</button><button id="timeBtn" title="Time of day (auto = your clock)">Time: auto</button><button id="lampBtn" title="Headlights (F)">Lamps: auto</button><button id="waveBtn" title="Sea state">Waves: auto</button><button id="soundBtn">Sound: on</button></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls">Controls: auto</button><button id="albumBtn" title="Snapshot album">Album (0)</button><button id="timeBtn" title="Time of day (auto = your clock)">Time: auto</button><button id="lampBtn" title="Headlights (F)">Lamps: auto</button><button id="waveBtn" title="Sea state">Waves: auto</button><button id="soundBtn">Sound: on</button></div>
 <div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="fsBanner" hidden><span>Fullscreen is more immersive.</span><button id="fsGo">Go fullscreen</button><button id="fsX" aria-label="Dismiss">✕</button></div>
+<button id="snapBtn" title="Take snapshot (P)" aria-label="Take snapshot"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
+<div id="flash"></div><div id="toast"></div>
+<div id="album" hidden>
+  <div id="albumBar"><b>Album</b><span id="albumCount"></span><span class="sp"></span><button id="albumClose">Close</button></div>
+  <div id="albumGrid"></div><div id="albumEmpty">No snapshots yet — press <kbd>P</kbd> or the camera button.</div>
+  <div id="albumView" hidden><img id="albumImg" alt="snapshot"><div id="viewBar"><button id="viewPrev" aria-label="Older">‹</button><span id="albumCap"></span><button id="viewNext" aria-label="Newer">›</button><span class="sp"></span><button id="viewDl" class="primary">Download</button><button id="viewDel">Delete</button><button id="viewClose">Back</button></div></div>
+</div>
 <div id="hint"></div>
 <div id="intro">
   <h1>DRIFT</h1>

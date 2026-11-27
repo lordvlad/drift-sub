@@ -10,6 +10,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Weather } from './weather.js';
 import { Daylight } from './daylight.js';
+import { Store, AlbumUI, MAX_SHOTS } from './album.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -92,6 +93,55 @@ $('go').addEventListener('click', () => {
 });
 if (params.has('skip')) { started = true; $('intro').classList.add('gone'); }
 if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.has('skip')) weather.start();
+
+// ---------- snapshots (sub's point of view) ----------
+const store = new Store();
+const album = new AlbumUI(store, (n) => { $('albumBtn').textContent = `Album (${n})`; });
+store.list().then((l) => { $('albumBtn').textContent = `Album (${l.length})`; });
+$('albumBtn').addEventListener('click', (e) => { album.open(); e.target.blur(); });
+$('snapBtn').addEventListener('click', (e) => { wantSnap = true; e.target.blur(); });
+$('snapBtn').addEventListener('pointerdown', (e) => e.stopPropagation());
+addEventListener('keydown', (e) => { if (e.code === 'KeyP' && !e.repeat && !album.isOpen) wantSnap = true; });
+let wantSnap = false, rt = null, snapBusy = false;
+const snapCam = new THREE.PerspectiveCamera(72, 1, 0.1, 320), q180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+const toastEl = $('toast'); let toastT = 0;
+function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2200); }
+const blobOf = (cv, q) => new Promise((res) => cv.toBlob(res, 'image/jpeg', q));
+function captureSnapshot() {
+  const maxSide = input.coarse ? 1440 : 1920, asp = innerWidth / innerHeight;
+  const w = asp >= 1 ? maxSide : Math.round(maxSide * asp), h = asp >= 1 ? Math.round(maxSide / asp) : maxSide;
+  if (!rt || rt.width !== w || rt.height !== h) {
+    if (rt) rt.dispose();
+    rt = new THREE.WebGLRenderTarget(w, h, { samples: 4, colorSpace: THREE.SRGBColorSpace });
+  }
+  // camera at the sub's viewport, looking where the sub points
+  const g = subModel.group; g.updateMatrixWorld(true);
+  snapCam.aspect = w / h; snapCam.updateProjectionMatrix();
+  g.localToWorld(snapCam.position.set(0, 0.15, 1.0));
+  snapCam.quaternion.copy(g.quaternion).multiply(q180); snapCam.updateMatrixWorld(true);
+  // hide the sub's own meshes (lights stay on); point sizes/uniforms are re-aimed at the snapshot camera
+  const hidden = []; g.traverse((o) => { if (o.isMesh && o.visible) { o.visible = false; hidden.push(o); } });
+  const ps = (h * 0.5) / Math.tan(THREE.MathUtils.degToRad(snapCam.fov) / 2), oldB = bubbles.uScale.value, oldS = snow.u.uScale.value;
+  bubbles.uScale.value = ps; snow.u.uScale.value = ps;
+  snow.u.uCam.value.copy(snapCam.position); shafts.u.uCam.value.copy(snapCam.position); surface.follow(snapCam.position);
+  renderer.setRenderTarget(rt); renderer.render(scene, snapCam); renderer.setRenderTarget(null);
+  for (const o of hidden) o.visible = true;
+  bubbles.uScale.value = oldB; snow.u.uScale.value = oldS;
+  const buf = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(rt, 0, 0, w, h, buf);
+  const meta = `${(-sub.pos.y).toFixed(0)} m deep · ${daylight.phase} · ${weather.state} seas`;
+  return { buf, w, h, meta };
+}
+async function finishSnapshot({ buf, w, h, meta }) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const img = new ImageData(new Uint8ClampedArray(w * h * 4), w, h), row = w * 4;
+  for (let y = 0; y < h; y++) img.data.set(buf.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows are bottom-up
+  cv.getContext('2d').putImageData(img, 0, 0);
+  const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
+  tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
+  const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
+  try { await store.add({ t: Date.now(), full, thumb, meta }); const n = (await store.list()).length; $('albumBtn').textContent = `Album (${n})`; toast(`Snapshot saved · ${n} / ${MAX_SHOTS}`); }
+  catch { toast('Could not save snapshot (storage full?)'); }
+}
 
 // ---------- fullscreen suggestion ----------
 const fsEl = document.documentElement, fsOK = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
@@ -182,6 +232,15 @@ function frame(now) {
   surface.follow(camera.position);
   snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position);
   audio.update(dt, sub, fauna.whaleLevel);
+  if (wantSnap) {
+    wantSnap = false;
+    if (started && !snapBusy && !album.isOpen) {
+      snapBusy = true; const fl = $('flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+      const shot = captureSnapshot();
+      snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position); surface.follow(camera.position);
+      finishSnapshot(shot).finally(() => { snapBusy = false; });
+    }
+  }
 
   $('depth').textContent = `depth ${(-sub.pos.y).toFixed(0)} m`;
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
@@ -190,6 +249,6 @@ function frame(now) {
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = { weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+window.__sim = { album, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !params.has('nosw')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
