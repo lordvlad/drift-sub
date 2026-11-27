@@ -49,7 +49,7 @@ const fauna = new Fauna(scene, field, quality);
 const audio = new Audio();
 const weather = new Weather(() => {
   const auto = weather.mode === 'auto', st = weather.status;
-  ib($('waveBtn'), weather.state, auto ? `Waves: auto — ${weather.state}${st === 'locating' ? ' (locating…)' : st === 'unavailable' ? ' (drifting, no weather data)' : ` (${st})`}. Click to override` : `Waves: ${weather.state}. Click to change`, { auto });
+  ib($('waveBtn'), weather.state, auto ? `Waves: auto — ${weather.state}${st === 'locating' ? ' (locating…)' : st === 'unavailable' ? ' (drifting, no weather data)' : ` (${st})`}. Click to override` : `Waves: ${weather.state}. Click to change`);
 });
 
 const [sx, sz] = field.findStart();
@@ -63,7 +63,7 @@ const ui = {
   joy: $('joy'), knob: $('knob'), btnUp: $('btnUp'), btnDown: $('btnDown'),
   applyMode(mode, touch) {
     document.body.classList.toggle('touch', touch);
-    ib($('modeBtn'), touch ? 'touch' : 'keys', 'Controls: ' + (mode === 'auto' ? `auto (${touch ? 'touch' : 'keyboard + mouse'})` : mode === 'touch' ? 'touch' : 'keyboard + mouse') + '. Click to switch', { auto: mode === 'auto' });
+    ib($('modeBtn'), touch ? 'touch' : 'keys', 'Controls: ' + (mode === 'auto' ? `auto (${touch ? 'touch' : 'keyboard + mouse'})` : mode === 'touch' ? 'touch' : 'keyboard + mouse') + '. Click to switch');
     setIntroText(touch);
   },
 };
@@ -74,7 +74,7 @@ function setIntroText(touch) {
     ? 'Left lever: thrust forward &amp; reverse.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
     : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps &nbsp; <kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
 }
-$('modeBtn').addEventListener('click', (e) => { const a = modeLabel(); input.cycleMode(); say(`Controls: ${a} → ${modeLabel()}`); e.currentTarget.blur(); });
+$('modeBtn').addEventListener('click', (e) => { input.cycleMode(); say(`controls: ${modeLabel()}`); e.currentTarget.blur(); });
 // toggle feedback goes to the same quiet line as the other calming notes
 let sayT = 0;
 function say(msg, ms = 3200) { const h = $('hint'); h.textContent = msg; h.classList.add('show'); clearTimeout(sayT); sayT = setTimeout(() => h.classList.remove('show'), ms); }
@@ -83,16 +83,16 @@ const waveLabel = () => weather.mode === 'auto' ? `auto (${weather.state})` : we
 const timeLabel = () => daylight.mode === 'auto' ? `auto (${daylight.phase})` : daylight.mode;
 const soundIcon = () => ib($('soundBtn'), audio.muted ? 'soundOff' : 'soundOn', 'Sound: ' + (audio.muted ? 'off' : 'on'));
 soundIcon();
-$('soundBtn').addEventListener('click', (e) => { const a = audio.muted ? 'off' : 'on'; audio.setMuted(!audio.muted); soundIcon(); say(`Sound: ${a} → ${audio.muted ? 'off' : 'on'}`); e.currentTarget.blur(); });
-$('waveBtn').addEventListener('click', (e) => { const a = waveLabel(); weather.cycle(); say(`Waves: ${a} → ${waveLabel()}`); e.currentTarget.blur(); });
+$('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); soundIcon(); say(`sound ${audio.muted ? 'off' : 'on'}`); e.currentTarget.blur(); });
+$('waveBtn').addEventListener('click', (e) => { weather.cycle(); say(`waves ${waveLabel()}`); e.currentTarget.blur(); });
 weather.onChange();
-const daylight = new Daylight(() => { const ph = daylight.phase; ib($('timeBtn'), { night: 'moon', dawn: 'sunrise', morning: 'sunrise', day: 'sun', evening: 'sunset' }[ph], daylight.mode === 'auto' ? `Time: auto (${ph}, your clock). Click to override` : `Time: ${daylight.mode}. Click to change`, { auto: daylight.mode === 'auto' }); });
+const daylight = new Daylight(() => { const ph = daylight.phase; ib($('timeBtn'), { night: 'moon', dawn: 'sunrise', morning: 'sunrise', day: 'sun', evening: 'sunset' }[ph], daylight.mode === 'auto' ? `Time: auto (${ph}, your clock). Click to override` : `Time: ${daylight.mode}. Click to change`); });
 daylight.onChange();
 const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
-const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`, { auto: lampMode === 'auto' }); };
-const cycleLamps = () => { const a = lampMode; lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); say(`Lamps: ${a} → ${lampMode}`); };
+const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`); };
+const cycleLamps = () => { lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); say(`lamps ${lampMode}`); };
 lampLabel();
-$('timeBtn').addEventListener('click', (e) => { const a = timeLabel(); daylight.cycle(); say(`Time: ${a} → ${timeLabel()}`); e.currentTarget.blur(); });
+$('timeBtn').addEventListener('click', (e) => { daylight.cycle(); say(`time ${timeLabel()}`); e.currentTarget.blur(); });
 $('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
 addEventListener('keydown', (e) => { if (e.code === 'KeyF' && !e.repeat) cycleLamps(); });
 $('tools').addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -111,7 +111,7 @@ const store = new Store(), wallet = new Wallet();
 const toastEl = $('toast'); let toastT = 0;
 function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
 const album = new AlbumUI(store, wallet, (n) => albumIcon(n), toast);
-const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`, { badge: n }); ib($('vfAlbum'), 'album', `Album (${n})`, { badge: n }); };
+const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`); ib($('vfAlbum'), 'album', `Album (${n})`); };
 albumIcon(0); store.list().then((l) => albumIcon(l.length));
 ib($('vfExit'), 'close', 'Exit viewfinder (Esc)');
 $('albumBtn').addEventListener('click', (e) => { album.open(); e.currentTarget.blur(); });

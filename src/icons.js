@@ -29,10 +29,7 @@ const P = {
 };
 export const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name]}"/></svg>`;
 
-/** opts: { auto: show the "A" badge, badge: number/text in the corner } */
-export function ib(el, name, title, opts = {}) {
-  const key = name + '|' + (opts.badge ?? '');
-  if (el._ibKey !== key) { el._ibKey = key; el.innerHTML = svg(name) + (opts.badge !== undefined ? `<b>${opts.badge}</b>` : ''); }
+export function ib(el, name, title) {
+  if (el._ib !== name) { el._ib = name; el.innerHTML = svg(name); }
   el.classList.add('ib'); el.title = title; el.setAttribute('aria-label', title);
-  if (opts.auto) el.dataset.auto = ''; else delete el.dataset.auto;
 }
