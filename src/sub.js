@@ -100,8 +100,21 @@ export class Sub {
     this.throttle = 0; this.omega = 0; this.speed = 0; this.vf = 0; this.propAngle = 0;
     this.t = 0; this.touchedGround = 0;
     this.propPos = new THREE.Vector3(); this.ceil = -2.4; this.limit = 0;
+    this.damage = 0; this.maxDepth = MAX_DEPTH; this.hurtFlash = 0; this.scrape = 0; this.hitCool = 0; this.hitCount = 0; this.hitSev = 0;
   }
-  update(dt, input, terrain, field) {
+  /** impact at speed `spd` against something of hardness k (rock 1 .. sand 0.15). Gentle touches are free. */
+  hit(spd, k) {
+    if (this.hitCool > 0 || spd < 0.6) return;
+    this.hitCool = 0.35;
+    this.damage = Math.min(1, this.damage + 0.03 * Math.pow(spd - 0.4, 1.3) * k);
+    this.hitSev = clamp(spd * k / 5, 0.1, 1); this.hurtFlash = Math.max(this.hurtFlash, 0.4 + this.hitSev * 0.6); this.hitCount++;
+  }
+  /** 0.15 (flat sand) .. 1 (rock): mirrors the seabed colouring, steep or rock-zone ground is hard */
+  groundHardness(n, field) {
+    const steep = clamp((0.93 - n[1]) / 0.12, 0, 1), rock = Math.max(steep, field.rockAt(this.pos.x, this.pos.z) * 0.55 * clamp((0.985 - n[1]) / 0.05, 0, 1));
+    return 0.15 + 0.85 * rock;
+  }
+  update(dt, input, terrain, field, fauna) {
     this.t += dt;
     const sp = this.vel.length();
     const eff = 0.45 + 0.55 * Math.min(1, sp / 4);
@@ -140,6 +153,9 @@ export class Sub {
       const n = field.normalAt(this.pos.x, this.pos.z, [0, 0, 0]);
       const push = (2.5 - clear) * 2.2;
       ax += n[0] * push; ay += n[1] * push; az += n[2] * push;
+      // the cushion usually softens a landing, but ploughing into the seabed still thumps the hull
+      const vin = v.x * n[0] + v.y * n[1] + v.z * n[2];
+      if (clear < 0.9 && vin < -0.8) this.hit(-vin, this.groundHardness(n, field));
     }
     v.x += ax * dt; v.y += ay * dt; v.z += az * dt;
     this.pos.addScaledVector(v, dt);
@@ -150,14 +166,28 @@ export class Sub {
       const n = field.normalAt(this.pos.x, this.pos.z, [0, 0, 0]);
       this.pos.y = gh2 + 0.8;
       const vn = v.x * n[0] + v.y * n[1] + v.z * n[2];
-      if (vn < 0) { v.x -= n[0] * vn * 1.1; v.y -= n[1] * vn * 1.1; v.z -= n[2] * vn * 1.1; this.touchedGround = Math.min(1, -vn / 3); }
+      if (vn < 0) {
+        v.x -= n[0] * vn * 1.1; v.y -= n[1] * vn * 1.1; v.z -= n[2] * vn * 1.1; this.touchedGround = Math.min(1, -vn / 3);
+        // how rocky is this patch? mirrors the seabed colouring: steep or rock-zone ground is hard, flat sand is soft
+        this.hit(-vn, this.groundHardness(n, field));
+      }
     }
-    terrain.collide(this.pos, v, 0.9);
+    const bump = terrain.collide(this.pos, v, 0.9);
+    if (bump > 0) this.hit(bump, terrain.impactK);
+    const whump = fauna ? fauna.collide(this.pos, v, 0.9) : 0;   // whales are big and do not step aside
+    if (whump > 0) this.hit(whump, 0.7);
+    // seaweed scrapes the hull while ploughing through it
+    const wc = this.speed > 0.3 ? terrain.weedContact(this.pos, 0.9) : 0;
+    this.scrape += ((wc ? 1 : 0) - this.scrape) * (1 - Math.exp(-dt * 4));
+    if (wc) this.damage = Math.min(1, this.damage + dt * 0.0028 * (0.4 + this.speed) * Math.min(wc, 4));
+    this.hitCool = Math.max(0, this.hitCool - dt); this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.6);
+    this.damage = Math.max(0, this.damage - dt / 720);   // slow self-repair: a full wreck mends in about 12 minutes
+    this.maxDepth += (MAX_DEPTH * (1 - 0.6 * this.damage) - this.maxDepth) * (1 - Math.exp(-dt * 2));
     // depth limit: pressure wall. Soft push over the last 4 m, hard stop at MAX_DEPTH.
-    const deep = -this.pos.y - (MAX_DEPTH - 4);
+    const deep = -this.pos.y - (this.maxDepth - 4);
     if (deep > 0) { v.y += deep * 2.2 * dt; if (v.y < 0) v.y *= Math.exp(-dt * deep * 0.8); }
     if (this.pos.y < -MAX_DEPTH) { this.pos.y = -MAX_DEPTH; v.y = Math.max(0, v.y); }
-    this.limit = clamp((-this.pos.y - (MAX_DEPTH - 8)) / 8, 0, 1);
+    this.limit = clamp((-this.pos.y - (this.maxDepth - 8)) / 8, 0, 1);
     if (this.pos.y > this.ceil) { v.y -= (this.pos.y - this.ceil) * 3 * dt; if (this.pos.y > this.ceil + 0.8) { this.pos.y = this.ceil + 0.8; v.y = Math.min(0, v.y); } }
 
     this.speed = v.length();

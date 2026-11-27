@@ -65,7 +65,7 @@ function buildDecor(cx, cz, field, T, seed) {
     const jit = R(-0.12, 0.12);
     rockTint.setRGB(1 + jit, 1 + jit * 0.6, 1 + jit * 0.2);
     out.place(pick(T.rocks), x, y - s * 0.22, z, rng() * 6.28, s, s * R(0.8, 1.2), s * R(0.8, 1.2), nrm, 0.3, rockTint);
-    if (s >= 1.2) colliders.push(x, y + s * 0.2, z, s * 0.85);
+    if (s >= 1.2) colliders.push(x, y + s * 0.2, z, s * 0.85, 1);
     const pn = s > 2 ? 2 + Math.floor(rng() * 4) : Math.floor(rng() * 3);
     for (let k = 0; k < pn; k++) {
       const a = rng() * 6.28, d = s * R(0.9, 1.8), ps = s * R(0.15, 0.4) + 0.2;
@@ -95,7 +95,7 @@ function buildDecor(cx, cz, field, T, seed) {
       const s = R(0.7, 1.9) * (ki === 5 ? 0.8 : 1);
       out.place(pick(fam.list), x, y, z, rng() * 6.28, s, s * R(0.8, 1.3), s, nrm, 0.35, col);
       corals.push(x, y + s * 0.5, z);
-      if (ki === 1 || (ki === 2 && s > 1.4)) colliders.push(x, y + s * (ki === 1 ? 0.2 : 0.7), z, s * (ki === 1 ? 0.9 : 1.2));
+      if (ki === 1 || (ki === 2 && s > 1.4)) colliders.push(x, y + s * (ki === 1 ? 0.2 : 0.7), z, s * (ki === 1 ? 0.9 : 1.2), 0.6);
     }
   }
 
@@ -116,7 +116,7 @@ function buildDecor(cx, cz, field, T, seed) {
       const tpl = pick(kind === 'kelp' ? T.kelp : kind === 'tall' ? T.tall : T.grass);
       const s = R(0.75, 1.3);
       out.place(tpl, x, y - 0.05, z, rng() * 6.28, s, s * R(0.8, 1.2), s, nrm, 0.1, col);
-      weeds.push(x, y + (kind === 'kelp' ? 4 : 0.8), z);
+      weeds.push(x, y, z, (kind === 'kelp' ? 10 : kind === 'tall' ? 4 : 2) * s);
     }
   }
 
@@ -207,24 +207,40 @@ export class Terrain {
     for (let i = 0; i < Math.min(budget, need.length); i++) this._build(need[i][0], need[i][1]);
     return need.length - Math.min(budget, need.length);
   }
+  /** Pushes the sphere out of rock/coral colliders. Returns the strongest impact speed (0 = none); this.impactK = its hardness (1 rock, 0.6 coral). */
   collide(pos, vel, radius) {
     const cx = Math.floor(pos.x / CS), cz = Math.floor(pos.z / CS);
-    let hit = false;
+    let best = 0; this.impactK = 0;
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       const ch = this.chunks.get(this.key(cx + dx, cz + dz)); if (!ch) continue;
       const c = ch.colliders;
-      for (let i = 0; i < c.length; i += 4) {
+      for (let i = 0; i < c.length; i += 5) {
         const ox = pos.x - c[i], oy = pos.y - c[i + 1], oz = pos.z - c[i + 2];
         const minD = c[i + 3] + radius, d2 = ox * ox + oy * oy + oz * oz;
         if (d2 < minD * minD) {
           const d = Math.sqrt(d2) || 1e-4, nx = ox / d, ny = oy / d, nz = oz / d;
           pos.x = c[i] + nx * minD; pos.y = c[i + 1] + ny * minD; pos.z = c[i + 2] + nz * minD;
           const vn = vel.x * nx + vel.y * ny + vel.z * nz;
-          if (vn < 0) { vel.x -= nx * vn * 1.15; vel.y -= ny * vn * 1.15; vel.z -= nz * vn * 1.15; }
-          hit = true;
+          if (vn < 0) {
+            vel.x -= nx * vn * 1.15; vel.y -= ny * vn * 1.15; vel.z -= nz * vn * 1.15;
+            if (-vn > best) { best = -vn; this.impactK = c[i + 4]; }
+          }
         }
       }
     }
-    return hit;
+    return best;
+  }
+  /** number of seaweed plants the sub's sphere is currently pushing through */
+  weedContact(pos, radius) {
+    const cx = Math.floor(pos.x / CS), cz = Math.floor(pos.z / CS); let n = 0;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const ch = this.chunks.get(this.key(cx + dx, cz + dz)); if (!ch) continue;
+      const w = ch.weeds, r = radius + 0.35;
+      for (let i = 0; i < w.length; i += 4) {
+        const ox = pos.x - w[i], oz = pos.z - w[i + 2];
+        if (ox * ox + oz * oz < r * r && pos.y > w[i + 1] - 0.4 && pos.y < w[i + 1] + w[i + 3]) n++;
+      }
+    }
+    return n;
   }
 }

@@ -65,6 +65,8 @@
   body.touch #snapBtn { right: calc(max(22px, env(safe-area-inset-right)) + 80px); bottom: max(26px, env(safe-area-inset-bottom)); width: 64px; height: 64px; }
   body.vf #tools, body.vf #hud, body.vf #snapBtn, body.vf #fsBanner, body.vf #hint { display: none !important; }
   body.vf #touchui { display: none !important; }
+  #hurt { position: fixed; inset: 0; z-index: 7; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, #ff1e1400 42%, #ff1e1433 70%, #e0140acc 100%); }
+  #vfCracks { position: absolute; inset: 0; width: 100%; height: 100%; }
   #vf { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
   #vf[hidden] { display: none; }
   #vfFrame { position: absolute; inset: 4.5%; }
@@ -118,7 +120,9 @@
 <div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="fsBanner" hidden><span>Fullscreen is more immersive.</span><button id="fsGo">Go fullscreen</button><button id="fsX" aria-label="Dismiss">✕</button></div>
 <button id="snapBtn" title="Take snapshot (P)" aria-label="Take snapshot"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
+<div id="hurt"></div>
 <div id="vf" hidden>
+  <canvas id="vfCracks"></canvas>
   <div id="vfFrame"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i><i class="g gv1"></i><i class="g gv2"></i><i class="g gh1"></i><i class="g gh2"></i><i id="vfCross"></i></div>
   <div id="vfTop"><span id="vfDepth"></span><span id="vfHint"></span></div>
   <div id="vfBar"><button id="vfAlbum">Album</button><button id="vfLamp">Lamps: auto</button><button id="shutter" aria-label="Take photo"><i></i></button><button id="vfExit">Exit</button></div>

@@ -12,6 +12,7 @@ import { Weather } from './weather.js';
 import { Daylight } from './daylight.js';
 import { Store, AlbumUI, Wallet, MAX_SHOTS } from './album.js';
 import { scorePhoto } from './photo.js';
+import { drawCracks } from './cracks.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -158,14 +159,15 @@ function captureSnapshot() {
   bubbles.uScale.value = oldB; snow.u.uScale.value = oldS;
   const buf = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(rt, 0, 0, w, h, buf);
   const meta = `${(-sub.pos.y).toFixed(0)} m deep · ${daylight.phase} · ${weather.state} seas`;
-  const score = scorePhoto({ camera: snapCam, fauna, terrain, field, shafts, daylight, depth: -sub.pos.y });
-  return { buf, w, h, meta, score };
+  const damage = sub.damage, score = scorePhoto({ camera: snapCam, fauna, terrain, field, shafts, daylight, depth: -sub.pos.y, damage });
+  return { buf, w, h, meta, score, damage };
 }
-async function finishSnapshot({ buf, w, h, meta, score }) {
+async function finishSnapshot({ buf, w, h, meta, score, damage }) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const img = new ImageData(new Uint8ClampedArray(w * h * 4), w, h), row = w * 4;
   for (let y = 0; y < h; y++) img.data.set(buf.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows are bottom-up
-  cv.getContext('2d').putImageData(img, 0, 0);
+  const cx2 = cv.getContext('2d'); cx2.putImageData(img, 0, 0);
+  drawCracks(cx2, w, h, damage);   // a damaged sub has a cracked lens
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
   const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
@@ -218,7 +220,7 @@ function updateWater(camY, dt) {
 
 // ---------- depth gauge ----------
 const gTicks = $('gTicks'), gMark = $('gMark'), gauge = $('gauge');
-$('gMax').textContent = MAX_DEPTH + 'm'; $('gDanger').style.height = (8 / MAX_DEPTH * 100) + '%';
+$('gMax').textContent = MAX_DEPTH + 'm';
 for (let m = 0; m <= MAX_DEPTH; m += 5) {
   const t = document.createElement('div'); t.style.top = (m / MAX_DEPTH * 100) + '%'; if (m % 10 === 0) { t.className = 'maj'; if (m) t.innerHTML = `<span>${m}m</span>`; }
   gTicks.appendChild(t);
@@ -230,10 +232,13 @@ function updateGauge() {
   const txt = d.toFixed(1), red = sub.limit > 0.01;
   if (txt !== gShown) { gShown = txt; $('gVal').textContent = '-' + txt + 'm'; $('gNow').textContent = Math.round(d) + 'm'; }
   gauge.classList.toggle('red', red);
-  $('gMax').textContent = MAX_DEPTH + 'm' + (sub.limit > 0.95 ? ' — limit reached' : '');
+  const em = Math.round(sub.maxDepth);
+  $('gDanger').style.height = ((MAX_DEPTH - sub.maxDepth + 8) / MAX_DEPTH * 100) + '%';
+  $('gMax').textContent = em + 'm' + (em < MAX_DEPTH - 1 ? ' (damaged)' : '') + (sub.limit > 0.95 ? ' — limit reached' : '');
 }
 
 // ---------- loop ----------
+const hurtEl = $('hurt'); let seenHits = 0, crackKey = '';
 let last = performance.now(), fpsAcc = 0, fpsN = 0, lowTime = 0;
 const _tmp = new THREE.Vector3(); let baseFov = 62;
 function frame(now) {
@@ -252,7 +257,7 @@ function frame(now) {
     else if (fps > 58 && pixelRatio < Math.min(devicePixelRatio || 1, 2) - 0.01) { lowTime += 1; if (lowTime > 3) { pixelRatio = Math.min(Math.min(devicePixelRatio || 1, 2), pixelRatio + 0.25); lowTime = 0; resize(); } }
   }
 
-  sub.update(dt, inp, terrain, field);
+  sub.update(dt, inp, terrain, field, fauna);
   terrain.update(sub.pos.x, sub.pos.z, 1);
   fauna.update(dt, sub);
   bubbles.update(dt, t, sub.propPos, sub);
@@ -302,6 +307,12 @@ function frame(now) {
   }
 
   updateGauge();
+  // damage feedback: red glow growing from the screen edges (no health bar), thump + shake on impact
+  if (sub.hitCount !== seenHits) { seenHits = sub.hitCount; audio.thud(sub.hitSev); }
+  const glow = clamp(sub.damage * 1.6 + sub.hurtFlash * 0.55 + sub.scrape * 0.12, 0, 1);
+  hurtEl.style.opacity = (glow * (sub.damage > 0.4 ? 0.9 + 0.1 * Math.sin(t * 2.4) : 1)).toFixed(3);
+  if (sub.hurtFlash > 0.02) { const k = sub.hurtFlash * sub.hurtFlash * 0.12; camera.position.x += (Math.random() - 0.5) * k; camera.position.y += (Math.random() - 0.5) * k; }
+  if (vf) { const q = Math.round(sub.damage * 100) + ':' + innerWidth + 'x' + innerHeight; if (q !== crackKey) { crackKey = q; const c = $('vfCracks'); c.width = innerWidth; c.height = innerHeight; drawCracks(c.getContext('2d'), c.width, c.height, sub.damage); } }
   if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}`; }
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
   renderer.render(scene, camera);
@@ -309,6 +320,6 @@ function frame(now) {
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = { setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+window.__sim = { drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !params.has('nosw')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

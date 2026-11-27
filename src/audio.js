@@ -35,6 +35,15 @@ export class Audio {
     this.whaleT -= dt;
     if (whaleLevel > 0.03 && this.whaleT <= 0) { this.whaleCall(whaleLevel); this.whaleT = 9 + Math.random() * 10; }
   }
+  /** hull impact: soft low thump, harder with severity (0..1) */
+  thud(sev) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+    o.type = 'triangle'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
+    f.type = 'lowpass'; f.frequency.value = 260;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.1 + 0.3 * sev, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(f); f.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.55);
+  }
   whaleCall(level) {
     const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
     const base = 90 + Math.random() * 60, dur = 4 + Math.random() * 3;

@@ -15,6 +15,8 @@ const pickCount = () => {
   return Math.floor(R(120, 220));
 };
 const CAP = 220;
+// whale body as spheres along the spine: [z, radius] in units of body length (nose = +0.5)
+const SPINE = [0.36, 0.1, 0.22, 0.14, 0.05, 0.15, -0.12, 0.13, -0.27, 0.085, -0.38, 0.05];
 
 class Swarm {
   constructor(scene, geo) {
@@ -329,6 +331,29 @@ export class Fauna {
     if (w.active) w.update(dt, this.field, sub);
     else { w.timer -= dt; if (w.timer <= 0) w.spawn(this.field, sub); }
     this.whaleLevel = w.active ? clamp(1 - w.pos.distanceTo(sub.pos) / 200, 0, 1) : 0;
+  }
+  /** Sphere-vs-whale (and calf) collision: body approximated by a chain of spheres along its axis. Returns the strongest impact speed (relative to the whale), 0 if none. */
+  collide(pos, vel, radius) {
+    const w = this.whale; if (!w.active) return 0;
+    let best = this._bodyHit(w.pos, w.len, w.yaw, w.pitch, w.speed, pos, vel, radius);
+    if (w.hasCalf && w.calfMesh.visible) best = Math.max(best, this._bodyHit(w.calfPos, w.len * 0.4, w.yaw, w.pitch, w.speed, pos, vel, radius));
+    return best;
+  }
+  _bodyHit(c, len, yaw, pitch, speed, pos, vel, radius) {
+    if (Math.abs(pos.x - c.x) > len || Math.abs(pos.z - c.z) > len || Math.abs(pos.y - c.y) > len) return 0;
+    const cp = Math.cos(pitch), fx = Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = Math.cos(yaw) * cp;
+    let best = 0;
+    for (let i = 0; i < SPINE.length; i += 2) {
+      const z = SPINE[i] * len, r = SPINE[i + 1] * len + radius;
+      const sx = c.x + fx * z, sy = c.y + fy * z, sz = c.z + fz * z;
+      const ox = pos.x - sx, oy = pos.y - sy, oz = pos.z - sz, d2 = ox * ox + oy * oy + oz * oz;
+      if (d2 >= r * r) continue;
+      const d = Math.sqrt(d2) || 1e-4, nx = ox / d, ny = oy / d, nz = oz / d;
+      pos.x = sx + nx * r; pos.y = sy + ny * r; pos.z = sz + nz * r;
+      const vn = (vel.x - fx * speed) * nx + (vel.y - fy * speed) * ny + (vel.z - fz * speed) * nz;
+      if (vn < 0) { vel.x -= nx * vn * 1.15; vel.y -= ny * vn * 1.15; vel.z -= nz * vn * 1.15; best = Math.max(best, -vn); }
+    }
+    return best;
   }
   forceWhale(sub) { this.whale.spawn(this.field, sub); }
 }

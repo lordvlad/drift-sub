@@ -21,7 +21,7 @@ function inView(camera, x, y, z, out) {
 }
 
 export function scorePhoto(ctx) {
-  const { camera, fauna, terrain, field, shafts, daylight, depth } = ctx;
+  const { camera, fauna, terrain, field, shafts, daylight, depth, damage = 0 } = ctx;
   camera.updateMatrixWorld(true);
   const cp = camera.position, tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * 2;
   const seen = new Map();
@@ -60,9 +60,11 @@ export function scorePhoto(ctx) {
   for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
     const ch = terrain.chunks.get(terrain.key(ccx + dx, ccz + dz)); if (!ch) continue;
     for (const [arr, which] of [[ch.corals, 0], [ch.weeds, 1]]) {
-      for (let i = 0; i < arr.length; i += 3) {
-        const d = Math.hypot(arr[i] - cp.x, arr[i + 1] - cp.y, arr[i + 2] - cp.z);
-        if (d < 4 || d > 85 || !inView(camera, arr[i], arr[i + 1], arr[i + 2], tmp)) continue;
+      const st = which ? 4 : 3;
+      for (let i = 0; i < arr.length; i += st) {
+        const py = which ? arr[i + 1] + arr[i + 3] * 0.5 : arr[i + 1];
+        const d = Math.hypot(arr[i] - cp.x, py - cp.y, arr[i + 2] - cp.z);
+        if (d < 4 || d > 85 || !inView(camera, arr[i], py, arr[i + 2], tmp)) continue;
         which ? weed++ : coral++;
       }
     }
@@ -109,6 +111,7 @@ export function scorePhoto(ctx) {
   const ph = daylight.phase;
   if (ph === 'morning' || ph === 'dawn' || ph === 'evening') { total *= 1.1; items.push(['Golden hour', null, 1.1]); }
   if (depth >= 40) { total *= 1.1; items.push(['Deep dive', null, 1.1]); }
+  if (damage > 0.04) { const m = Math.max(0.15, 1 - 1.8 * damage); total *= m; items.push(['Cracked lens', null, m]); }
   const value = Math.max(1, Math.round(total));
   // composition fingerprint: species + rough group size + which third of the frame + scenery buckets + depth band + light
   const parts = [...seen.values()].filter((e) => e.kind !== 'calf').sort((a, b) => (a.sp.id < b.sp.id ? -1 : 1))
