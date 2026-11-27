@@ -73,7 +73,7 @@ export class AlbumUI {
   constructor(store, wallet, onChange, say) {
     this.store = store; this.wallet = wallet; this.onChange = onChange; this.say = say; this.urls = []; this.items = []; this.cur = -1; this.fullUrl = null;
     const $ = (id) => document.getElementById(id);
-    this.root = $('album'); this.grid = $('albumGrid'); this.count = $('albumCount'); this.viewer = $('albumView'); this.img = $('albumImg'); this.cap = $('albumCap'); this.coins = $('albumCoins'); this.vval = $('viewVal'); this.vitems = $('viewItems'); this.sellBtn = $('viewSell');
+    this.root = $('album'); this.grid = $('albumGrid'); this.count = $('albumCount'); this.viewer = $('albumView'); this.img = $('albumImg'); this.cap = $('albumCap'); this.coins = $('albumCoins'); this.sellBtn = $('viewSell');
     $('albumClose').addEventListener('click', () => this.close());
     $('viewClose').addEventListener('click', () => this.closeViewer());
     $('viewPrev').addEventListener('click', () => this.show(this.cur + 1));   // list is newest-first: "previous" = older
@@ -101,7 +101,7 @@ export class AlbumUI {
     this.root.classList.toggle('empty', !this.items.length);
     this.items.forEach((rec, i) => {
       const u = URL.createObjectURL(rec.thumb); this.urls.push(u);
-      const b = document.createElement('button'); b.className = 'thumb'; b.style.backgroundImage = `url(${u})`; b.title = new Date(rec.t).toLocaleString(); b.innerHTML = `<span class="price">◎ ${this.wallet.price(rec)}</span>`;
+      const b = document.createElement('button'); b.className = 'thumb'; b.style.backgroundImage = `url(${u})`; b.title = new Date(rec.t).toLocaleString();
       b.addEventListener('click', () => this.show(i)); this.grid.appendChild(b);
     });
     this.onChange(this.items.length);
@@ -112,9 +112,6 @@ export class AlbumUI {
     if (this.fullUrl) URL.revokeObjectURL(this.fullUrl);
     this.fullUrl = URL.createObjectURL(rec.full); this.img.src = this.fullUrl;
     this.cap.textContent = `${new Date(rec.t).toLocaleString()} · ${rec.meta || ''}`;
-    this.vval.textContent = `◎ ${this.wallet.price(rec)}`; this.sellBtn.textContent = `Sell for ◎ ${this.wallet.price(rec)}`;
-    this.vitems.textContent = ''; const rp = this.wallet.repeats(rec.key), rows = (rec.items || [['Unscored snapshot', '+2']]).slice(); if (rp) rows.push([`Already sold ${rp} similar`, '×' + this.wallet.mult(rec.key).toFixed(2)]);
-    for (const [l, a] of rows) { const r = document.createElement('div'); r.innerHTML = '<span></span><b></b>'; r.firstChild.textContent = l; r.lastChild.textContent = a; this.vitems.appendChild(r); }
     this.viewer.hidden = false;
   }
   closeViewer() { this.viewer.hidden = true; this.img.removeAttribute('src'); if (this.fullUrl) { URL.revokeObjectURL(this.fullUrl); this.fullUrl = null; } }
