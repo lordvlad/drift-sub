@@ -1,16 +1,12 @@
 import * as THREE from 'three';
 import { fishGeometry, sharkGeometry, whaleGeometry } from './creatures.js';
 import { makeCreatureMaterial } from './materials.js';
+import { FISH, SHARKS, WHALES, pick, bandY, bodyTint } from './species.js';
 
 const R = (a, b) => a + Math.random() * (b - a);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 
-const PALETTES = [
-  ['#ff7a1a', '#ff4f8b'], ['#ffd60a'], ['#1e6bff', '#0b2f9a'], ['#c9d6e2', '#9fb3c6'], ['#35e0ff', '#2a7bff'],
-  ['#e8453c', '#ff8a5c'], ['#58e08a', '#2fb4a0'], ['#e9b54a', '#ffd98a'], ['#a66bff', '#ff6bd5'], ['#9fb3c6', '#5d6f86'],
-  ['#ffffff', '#ffd1a1'], ['#ff9f1c', '#ffe066'],
-];
 const pickCount = () => {
   const r = Math.random();
   if (r < 0.22) return Math.floor(R(6, 16));
@@ -34,18 +30,29 @@ class Swarm {
     this.c = new THREE.Vector3(); this.vc = new THREE.Vector3();
     this.yaw = 0; this.speed = 1; this.spread = 1; this.fear = 0; this.seedP = [0, 0, 0, 0];
   }
+  bandY(y, ground) { return bandY(this.sp, y, ground, 1.5); }
   spawn(field, sub) {
     this.n = pickCount();
     this.type = Math.random() < 0.5 ? 'reef' : 'open';
-    this.size = this.n < 20 ? R(0.45, 1.0) : this.n > 100 ? R(0.2, 0.45) : R(0.25, 0.7);
+    // position: ahead-biased ring just outside visibility
+    const dir = Math.atan2(sub.fwd.x, sub.fwd.z) + R(-2.2, 2.2);
+    let best = null;
+    for (let tries = 0; tries < (this.type === 'reef' ? 14 : 1); tries++) {
+      const d = R(95, 135), a = dir + R(-0.4, 0.4) * tries;
+      const x = sub.pos.x + Math.sin(a) * d, z = sub.pos.z + Math.cos(a) * d;
+      const score = this.type === 'reef' ? field.reefAt(x, z) + field.rockAt(x, z) * 0.5 : 0;
+      if (!best || score > best.s) best = { x, z, s: score };
+    }
+    const g = field.heightAt(best.x, best.z);
+    const sp = this.sp = pick(FISH, -g - 1.5, (f) => f.habitat === this.type);
+    this.size = (this.n > 100 ? 0.75 : 1) * R(sp.size[0], sp.size[1]);
     this.radius = clamp(1.5 + Math.cbrt(this.n) * R(0.9, 1.6) * (0.6 + this.size), 2, 13);
     this.speed = this.type === 'open' ? R(1.8, 4.2) * (0.7 + this.size) : R(0.3, 0.9);
     this.alt = this.type === 'open' ? R(4, 38) : R(1.5, 6);
     this.t = Math.random() * 100;
     this.seedP = [R(0, 6), R(0, 6), R(0, 6), R(0, 6)];
-    const pal = PALETTES[Math.floor(Math.random() * PALETTES.length)];
-    const rainbow = Math.random() < 0.08;
-    const c1 = new THREE.Color(pal[0]), c2 = new THREE.Color(pal[pal.length - 1]), c = new THREE.Color();
+    const rainbow = !sp.colors;
+    const c1 = new THREE.Color(rainbow ? '#fff' : sp.colors[0]), c2 = new THREE.Color(rainbow ? '#fff' : sp.colors[sp.colors.length - 1]), c = new THREE.Color();
     for (let i = 0; i < this.n; i++) {
       const j = i * 3;
       // uniform in unit ball
@@ -58,17 +65,7 @@ class Swarm {
     }
     this.mesh.instanceColor.needsUpdate = true;
     this.mat.userData.u.uFreq.value = (6 + this.speed * 2.2) / (0.5 + this.size);
-    // position: ahead-biased ring just outside visibility
-    const dir = Math.atan2(sub.fwd.x, sub.fwd.z) + R(-2.2, 2.2);
-    let best = null;
-    for (let tries = 0; tries < (this.type === 'reef' ? 14 : 1); tries++) {
-      const d = R(95, 135), a = dir + R(-0.4, 0.4) * tries;
-      const x = sub.pos.x + Math.sin(a) * d, z = sub.pos.z + Math.cos(a) * d;
-      const score = this.type === 'reef' ? field.reefAt(x, z) + field.rockAt(x, z) * 0.5 : 0;
-      if (!best || score > best.s) best = { x, z, s: score };
-    }
-    const g = field.heightAt(best.x, best.z);
-    this.c.set(best.x, Math.min(-4, g + this.alt), best.z);
+    this.c.set(best.x, this.bandY(g + this.alt, g), best.z);
     this.home = this.c.clone();
     this.yaw = R(0, 6.28);
     for (let i = 0; i < this.n; i++) { // start inside the blob
@@ -103,12 +100,12 @@ class Swarm {
       const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
       this.vc.x = ax * s; this.vc.z = az * s;
       const gA = field.heightAt(this.c.x + ax * 14, this.c.z + az * 14);
-      const wantY = Math.min(-4, Math.max(gA + this.alt + Math.sin(t * 0.07 + sp[2]) * 4, gA + 3));
+      const wantY = this.bandY(Math.max(gA + this.alt + Math.sin(t * 0.07 + sp[2]) * 4, gA + 3), gA);
       this.vc.y += ((wantY - this.c.y) * 0.4 - this.vc.y) * (1 - Math.exp(-dt * 1.5));
       this.c.addScaledVector(this.vc, dt);
     } else {
       const tx = this.home.x + Math.sin(t * 0.06 + sp[0]) * 7 + fx * 8 * this.fear, tz = this.home.z + Math.cos(t * 0.05 + sp[1]) * 7 + fz * 8 * this.fear;
-      const ty = Math.min(-4, field.heightAt(tx, tz) + this.alt + Math.sin(t * 0.09 + sp[2]) * 1.5);
+      const gT = field.heightAt(tx, tz), ty = this.bandY(gT + this.alt + Math.sin(t * 0.09 + sp[2]) * 1.5, gT);
       const k = 1 - Math.exp(-dt * 0.6);
       this.vc.set((tx - this.c.x) * 0.6, (ty - this.c.y) * 0.6, (tz - this.c.z) * 0.6);
       this.c.x += (tx - this.c.x) * k * (1 + this.fear * 3); this.c.y += (ty - this.c.y) * k; this.c.z += (tz - this.c.z) * k * (1 + this.fear * 3);
@@ -139,8 +136,9 @@ class Swarm {
       this.V[j] += (vx - this.V[j]) * kd; this.V[j + 1] += (vy - this.V[j + 1]) * kd; this.V[j + 2] += (vz - this.V[j + 2]) * kd;
       this.P[j] += this.V[j] * dt; this.P[j + 1] += this.V[j + 1] * dt; this.P[j + 2] += this.V[j + 2] * dt;
       if ((i + frame) % 8 === 0) this.FL[i] = field.heightAt(this.P[j], this.P[j + 2]) + 0.5;
+      const dmax = -this.sp.max; if (this.P[j + 1] < dmax) { this.P[j + 1] = dmax; if (this.V[j + 1] < 0) this.V[j + 1] = 0; }
       if (this.P[j + 1] < this.FL[i]) { this.P[j + 1] = this.FL[i]; if (this.V[j + 1] < 0) this.V[j + 1] = 0; }
-      if (this.P[j + 1] > -2) this.P[j + 1] = -2;
+      const top = -Math.max(2, this.sp.min); if (this.P[j + 1] > top) this.P[j + 1] = top;
       // direction
       const sm2 = Math.hypot(this.V[j], this.V[j + 1], this.V[j + 2]);
       if (sm2 > 0.08) {
@@ -177,6 +175,18 @@ class Big {
     this.mesh.rotation.set(-this.pitch, this.yaw, this.roll);
   }
   despawn() { this.active = false; this.mesh.visible = false; this.timer = this.opts.nextDelay(); }
+  bandY(y, ground, margin) { return bandY(this.sp, y, ground, margin); }
+  /** highest seabed under the next few lookahead points (hills ahead must be cleared early) */
+  aheadGround(field, ax, az, dists) {
+    let m = field.heightAt(this.pos.x, this.pos.z);
+    for (const d of dists) m = Math.max(m, field.heightAt(this.pos.x + ax * d, this.pos.z + az * d));
+    return m;
+  }
+  /** hard floor: never let the body intersect the seabed, whatever the steering does */
+  groundGuard(field, clear) {
+    const g = field.heightAt(this.pos.x, this.pos.z) + clear;
+    if (this.pos.y < g) this.pos.y = g;
+  }
 }
 
 class Shark extends Big {
@@ -184,11 +194,13 @@ class Shark extends Big {
     super(scene, geo, { mat: { amp: 0.075, freq: 5, wave: 5 }, firstDelay: () => R(6, 50), nextDelay: () => R(20, 80) });
   }
   spawn(field, sub) {
-    this.len = R(3.6, 6); this.mesh.scale.setScalar(this.len);
-    this.speed = R(2.6, 4); this.curious = Math.random() < 0.5; this.cur = this.curious ? R(25, 50) : 0; this.t = Math.random() * 50;
     const a = Math.atan2(sub.fwd.x, sub.fwd.z) + R(-2.4, 2.4), d = R(100, 130);
-    this.pos.set(sub.pos.x + Math.sin(a) * d, 0, sub.pos.z + Math.cos(a) * d);
-    this.pos.y = Math.min(-8, field.heightAt(this.pos.x, this.pos.z) + R(5, 22));
+    const px = sub.pos.x + Math.sin(a) * d, pz = sub.pos.z + Math.cos(a) * d, g = field.heightAt(px, pz);
+    const sp = this.sp = pick(SHARKS, -g - 4);
+    this.len = R(sp.len[0], sp.len[1]); this.mesh.scale.setScalar(this.len);
+    bodyTint(sp, this.mat.color, 0.15);
+    this.speed = R(2.6, 4); this.curious = Math.random() < 0.5; this.cur = this.curious ? R(25, 50) : 0; this.t = Math.random() * 50;
+    this.pos.set(px, this.bandY(g + R(5, 22), g, 4), pz);
     this.yaw = a + Math.PI + R(-0.8, 0.8); this.yawRate = 0; this.pitch = 0;
     this.active = true; this.mesh.visible = true; this.place();
   }
@@ -205,12 +217,13 @@ class Shark extends Big {
     this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * 0.8));
     this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
-    const gA = field.heightAt(this.pos.x + ax * 22, this.pos.z + az * 22);
-    const wantY = Math.min(-8, Math.max(gA + 8 + Math.sin(t * 0.05) * 6, gA + 4));
-    const dy = clamp((wantY - this.pos.y) * 0.15, -1.2, 1.2);
-    this.pitch += (clamp(dy / this.speed, -0.4, 0.4) - this.pitch) * (1 - Math.exp(-dt * 1.2));
+    const gA = this.aheadGround(field, ax, az, [6, 12, 22, 34]);
+    const wantY = this.bandY(Math.max(gA + 8 + Math.sin(t * 0.05) * 6, gA + 4), gA, 4);
+    const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.5);
+    this.pitch += (clamp(dy / this.speed, -0.4, 0.7) - this.pitch) * (1 - Math.exp(-dt * 1.6));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * this.speed * dt; this.pos.z += az * cp * this.speed * dt; this.pos.y += Math.sin(this.pitch) * this.speed * dt;
+    this.groundGuard(field, this.len * 0.2 + 0.6);
     this.roll += (-this.yawRate * 1.3 - this.roll) * (1 - Math.exp(-dt * 2));
     this.mat.userData.u.uFreq.value = 3 + this.speed * 0.9;
     this.place();
@@ -227,15 +240,18 @@ class Whale extends Big {
     scene.add(this.calfMesh); this.calfPos = new THREE.Vector3(); this.hasCalf = false;
   }
   spawn(field, sub) {
-    this.len = R(18, 26); this.mesh.scale.setScalar(this.len);
-    this.speed = R(2.4, 3.2); this.t = Math.random() * 50;
     const a = Math.atan2(sub.fwd.x, sub.fwd.z) + R(-1.6, 1.6), d = 150;
     this.pos.set(sub.pos.x + Math.sin(a) * d, 0, sub.pos.z + Math.cos(a) * d);
+    const g0 = field.heightAt(this.pos.x, this.pos.z);
+    const sp = this.sp = pick(WHALES, -g0 - 12);
+    this.len = R(sp.len[0], sp.len[1]); this.mesh.scale.setScalar(this.len);
+    bodyTint(sp, this.mat.color, 0.1); this.calfMesh.material.color.copy(this.mat.color).multiplyScalar(1.05);
+    this.speed = R(2.4, 3.2); this.t = Math.random() * 50;
     // aim to pass 25-45 units from the sub
     const lat = R(25, 45) * (Math.random() < 0.5 ? 1 : -1);
     const tx = sub.pos.x + Math.cos(a) * lat, tz = sub.pos.z - Math.sin(a) * lat;
     this.yaw = Math.atan2(tx - this.pos.x, tz - this.pos.z); this.yawRate = 0;
-    this.pos.y = clamp(sub.pos.y + R(-6, 10), field.heightAt(this.pos.x, this.pos.z) + 12, -14);
+    this.pos.y = this.bandY(sub.pos.y + R(-6, 10), g0, 12);
     this.pitch = 0; this.active = true; this.mesh.visible = true;
     this.hasCalf = Math.random() < 0.5;
     if (this.hasCalf) { this.calfMesh.scale.setScalar(this.len * 0.4); this.calfMesh.visible = true; this.calfPos.copy(this.pos); this.calfPos.x -= 8; }
@@ -246,12 +262,13 @@ class Whale extends Big {
     const turn = 0.03 * Math.sin(t * 0.04) + 0.02 * Math.sin(t * 0.11);
     this.yaw += turn * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
-    const gA = field.heightAt(this.pos.x + ax * 40, this.pos.z + az * 40);
-    const wantY = Math.min(-14, Math.max(gA + 14, this.pos.y + Math.sin(t * 0.08) * 2));
-    const dy = clamp((wantY - this.pos.y) * 0.1, -0.8, 0.8);
-    this.pitch += (clamp(dy / this.speed, -0.2, 0.2) + Math.sin(t * 0.25) * 0.04 - this.pitch) * (1 - Math.exp(-dt * 0.8));
+    const gA = this.aheadGround(field, ax, az, [15, 30, 50, 80]);
+    const wantY = this.bandY(Math.max(gA + 14, this.pos.y + Math.sin(t * 0.08) * 2), gA, 12);
+    const dy = clamp((wantY - this.pos.y) * 0.12, -0.8, 1.4);
+    this.pitch += (clamp(dy / this.speed, -0.2, 0.35) + Math.sin(t * 0.25) * 0.04 - this.pitch) * (1 - Math.exp(-dt * 0.9));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * this.speed * dt; this.pos.z += az * cp * this.speed * dt; this.pos.y += Math.sin(this.pitch) * this.speed * dt;
+    this.groundGuard(field, this.len * 0.18 + 1);
     this.roll = Math.sin(t * 0.2) * 0.05;
     this.place();
     if (this.hasCalf) {
@@ -259,6 +276,7 @@ class Whale extends Big {
       const tx = this.pos.x + rx * this.len * 0.28 - ax * this.len * 0.12, ty = this.pos.y - this.len * 0.22, tz = this.pos.z + rz * this.len * 0.28 - az * this.len * 0.12;
       const k = 1 - Math.exp(-dt * 0.9);
       this.calfPos.x += (tx - this.calfPos.x) * k; this.calfPos.y += (ty - this.calfPos.y) * k; this.calfPos.z += (tz - this.calfPos.z) * k;
+      const cg = field.heightAt(this.calfPos.x, this.calfPos.z) + this.len * 0.4 * 0.2 + 0.8; if (this.calfPos.y < cg) this.calfPos.y = cg;
       this.calfMesh.position.copy(this.calfPos); this.calfMesh.rotation.set(-this.pitch, this.yaw, this.roll * 1.5);
     }
     const d = Math.hypot(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z);

@@ -10,7 +10,8 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Weather } from './weather.js';
 import { Daylight } from './daylight.js';
-import { Store, AlbumUI, MAX_SHOTS } from './album.js';
+import { Store, AlbumUI, Wallet, MAX_SHOTS } from './album.js';
+import { scorePhoto } from './photo.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -66,9 +67,10 @@ const ui = {
 };
 const input = new Input(canvas, ui);
 function setIntroText(touch) {
+  $('vfHint').textContent = touch ? 'drag to aim' : 'mouse / A D to aim · Space or Enter to shoot · Esc to exit';
   $('introText').innerHTML = touch
     ? 'Left stick: forward &amp; back.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
-    : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
+    : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps &nbsp; <kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
 }
 $('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.target.blur(); });
 $('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); e.target.textContent = 'Sound: ' + (audio.muted ? 'off' : 'on'); e.target.blur(); });
@@ -77,7 +79,7 @@ weather.onChange();
 const daylight = new Daylight(() => { $('timeBtn').textContent = 'Time: ' + (daylight.mode === 'auto' ? `auto (${daylight.phase})` : daylight.mode); });
 daylight.onChange();
 const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
-const lampLabel = () => { $('lampBtn').textContent = 'Lamps: ' + lampMode; };
+const lampLabel = () => { $('lampBtn').textContent = 'Lamps: ' + lampMode; $('vfLamp').textContent = 'Lamps: ' + lampMode; };
 const cycleLamps = () => { lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); };
 lampLabel();
 $('timeBtn').addEventListener('click', (e) => { daylight.cycle(); e.target.blur(); });
@@ -95,17 +97,45 @@ if (params.has('skip')) { started = true; $('intro').classList.add('gone'); }
 if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.has('skip')) weather.start();
 
 // ---------- snapshots (sub's point of view) ----------
-const store = new Store();
-const album = new AlbumUI(store, (n) => { $('albumBtn').textContent = `Album (${n})`; });
+const store = new Store(), wallet = new Wallet();
+const toastEl = $('toast'); let toastT = 0;
+function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
+const album = new AlbumUI(store, wallet, (n) => { $('albumBtn').textContent = `Album (${n})`; }, toast);
 store.list().then((l) => { $('albumBtn').textContent = `Album (${l.length})`; });
 $('albumBtn').addEventListener('click', (e) => { album.open(); e.target.blur(); });
-$('snapBtn').addEventListener('click', (e) => { wantSnap = true; e.target.blur(); });
-$('snapBtn').addEventListener('pointerdown', (e) => e.stopPropagation());
-addEventListener('keydown', (e) => { if (e.code === 'KeyP' && !e.repeat && !album.isOpen) wantSnap = true; });
-let wantSnap = false, rt = null, snapBusy = false;
-const snapCam = new THREE.PerspectiveCamera(72, 1, 0.1, 320), q180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-const toastEl = $('toast'); let toastT = 0;
-function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2200); }
+
+// viewfinder mode: aim the sub (turn only, no thrust), then press the shutter
+const VF_FOV = 58;
+let vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
+const vfEl = $('vf');
+function setViewfinder(on) {
+  if (on === vf || (on && (!started || album.isOpen))) return;
+  vf = on; document.body.classList.toggle('vf', on); vfEl.hidden = !on;
+  if (on) { if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock(); fsBanner.hidden = true; }
+}
+$('snapBtn').addEventListener('click', (e) => { setViewfinder(true); e.target.blur(); });
+$('vfExit').addEventListener('click', () => setViewfinder(false));
+$('vfAlbum').addEventListener('click', () => { setViewfinder(false); album.open(); });
+$('vfLamp').addEventListener('click', (e) => { cycleLamps(); e.target.blur(); });
+$('shutter').addEventListener('click', (e) => { wantSnap = true; e.target.blur(); });
+addEventListener('keydown', (e) => {
+  if (album.isOpen || e.repeat) return;
+  if (e.code === 'KeyP') setViewfinder(!vf);
+  else if (vf && e.code === 'Escape') setViewfinder(false);
+  else if (vf && (e.code === 'Enter' || e.code === 'Space')) wantSnap = true;
+});
+// while framing a shot the sub may turn but never accelerates
+const vfInput = {
+  get thrust() { return 0; }, get turn() { return input.turn; }, rise: 0, boost: false,
+  get sens() { return input.sens * 0.55; }, takeLookX: () => input.takeLookX(), takeLookY: () => input.takeLookY(),
+};
+const snapCam = new THREE.PerspectiveCamera(VF_FOV, 1, 0.1, 320), q180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+const _eul = new THREE.Euler(0, 0, 0, 'YXZ'), _vq = new THREE.Quaternion(), _vp = new THREE.Vector3();
+/** the sub's eye: front viewport, level horizon, looking where the nose points */
+function vfPose(pos, quat) {
+  pos.copy(sub.pos).addScaledVector(sub.fwd, 1.0); pos.y += 0.12;
+  quat.setFromEuler(_eul.set(-sub.pitch, sub.yaw, 0)).multiply(q180);
+}
 const blobOf = (cv, q) => new Promise((res) => cv.toBlob(res, 'image/jpeg', q));
 function captureSnapshot() {
   const maxSide = input.coarse ? 1440 : 1920, asp = innerWidth / innerHeight;
@@ -117,8 +147,7 @@ function captureSnapshot() {
   // camera at the sub's viewport, looking where the sub points
   const g = subModel.group; g.updateMatrixWorld(true);
   snapCam.aspect = w / h; snapCam.updateProjectionMatrix();
-  g.localToWorld(snapCam.position.set(0, 0.15, 1.0));
-  snapCam.quaternion.copy(g.quaternion).multiply(q180); snapCam.updateMatrixWorld(true);
+  vfPose(snapCam.position, snapCam.quaternion); snapCam.updateMatrixWorld(true);
   // hide the sub's own meshes (lights stay on); point sizes/uniforms are re-aimed at the snapshot camera
   const hidden = []; g.traverse((o) => { if (o.isMesh && o.visible) { o.visible = false; hidden.push(o); } });
   const ps = (h * 0.5) / Math.tan(THREE.MathUtils.degToRad(snapCam.fov) / 2), oldB = bubbles.uScale.value, oldS = snow.u.uScale.value;
@@ -129,9 +158,10 @@ function captureSnapshot() {
   bubbles.uScale.value = oldB; snow.u.uScale.value = oldS;
   const buf = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(rt, 0, 0, w, h, buf);
   const meta = `${(-sub.pos.y).toFixed(0)} m deep · ${daylight.phase} · ${weather.state} seas`;
-  return { buf, w, h, meta };
+  const score = scorePhoto({ camera: snapCam, fauna, terrain, field, shafts, daylight, depth: -sub.pos.y });
+  return { buf, w, h, meta, score };
 }
-async function finishSnapshot({ buf, w, h, meta }) {
+async function finishSnapshot({ buf, w, h, meta, score }) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const img = new ImageData(new Uint8ClampedArray(w * h * 4), w, h), row = w * 4;
   for (let y = 0; y < h; y++) img.data.set(buf.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows are bottom-up
@@ -139,7 +169,7 @@ async function finishSnapshot({ buf, w, h, meta }) {
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
   const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
-  try { await store.add({ t: Date.now(), full, thumb, meta }); const n = (await store.list()).length; $('albumBtn').textContent = `Album (${n})`; toast(`Snapshot saved · ${n} / ${MAX_SHOTS}`); }
+  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, items: score.items, species: score.species }); const n = (await store.list()).length; $('albumBtn').textContent = `Album (${n})`; toast(`Saved · worth ◎ ${score.value}${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
   catch { toast('Could not save snapshot (storage full?)'); }
 }
 
@@ -183,6 +213,7 @@ function updateWater(camY, dt) {
   shared.uSwayK.value = W.sway; su.uLight.value.copy(L.surf).multiplyScalar(W.dim);
   shafts.u.uSun.value.set(L.lean * 0.6, -1, 0.12).normalize(); shafts.u.uCol.value.copy(L.sun).lerp(new THREE.Color(0x8fe6ff), 0.45);
   snow.u.uBright.value = 1 - 0.6 * k;
+  shafts.mesh.visible = shafts.u.uInt.value > 0.003;
 }
 
 // ---------- depth gauge ----------
@@ -204,7 +235,7 @@ function updateGauge() {
 
 // ---------- loop ----------
 let last = performance.now(), fpsAcc = 0, fpsN = 0, lowTime = 0;
-const _tmp = new THREE.Vector3();
+const _tmp = new THREE.Vector3(); let baseFov = 62;
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000; last = now;
@@ -212,7 +243,7 @@ function frame(now) {
   shared.uTime.value += dt;
   const t = shared.uTime.value;
 
-  const inp = started ? input : idleInput;
+  const inp = !started ? idleInput : vf ? vfInput : input;
   // dynamic resolution
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 2) {
@@ -241,8 +272,17 @@ function frame(now) {
   _tmp.copy(sub.pos).addScaledVector(sub.fwd, 3.2); _tmp.y += 0.2;
   cam.look.lerp(_tmp, 1 - Math.exp(-dt * 8));
   camera.lookAt(cam.look);
-  const fov = 62 + Math.min(8, sub.speed * 0.8);
-  if (Math.abs(fov - camera.fov) > 0.05) { camera.fov += (fov - camera.fov) * 0.1; camera.updateProjectionMatrix(); }
+  baseFov += ((62 + Math.min(8, sub.speed * 0.8)) - baseFov) * 0.1;
+  // viewfinder: glide from the chase camera into the sub's own eye
+  vfBlend += ((vf ? 1 : 0) - vfBlend) * (1 - Math.exp(-dt * 7));
+  if (vfBlend < 0.002) vfBlend = 0; else if (vfBlend > 0.998) vfBlend = 1;
+  if (vfBlend > 0) {
+    vfPose(_vp, _vq);
+    camera.position.lerp(_vp, vfBlend); camera.quaternion.slerp(_vq, vfBlend);
+  }
+  subModel.setHidden(vfBlend > 0.75);
+  const fov = baseFov + (VF_FOV - baseFov) * vfBlend;
+  if (Math.abs(fov - camera.fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 
   weather.update(dt);
   updateWater(camera.position.y, dt);
@@ -251,7 +291,7 @@ function frame(now) {
   audio.update(dt, sub, fauna.whaleLevel);
   if (wantSnap) {
     wantSnap = false;
-    if (started && !snapBusy && !album.isOpen) {
+    if (started && vf && vfBlend > 0.95 && !snapBusy && !album.isOpen) {
       snapBusy = true; const fl = $('flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
       const shot = captureSnapshot();
       snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position); surface.follow(camera.position);
@@ -260,12 +300,13 @@ function frame(now) {
   }
 
   updateGauge();
+  if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}`; }
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
   renderer.render(scene, camera);
 }
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = { album, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+window.__sim = { setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !params.has('nosw')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

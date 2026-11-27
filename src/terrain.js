@@ -47,7 +47,7 @@ const tint = (hex, j = 0) => { // jittered Color; reuse not possible because jit
 
 function buildDecor(cx, cz, field, T, seed) {
   const rng = mulberry32(hash2(cx, cz, seed));
-  const out = new Out(), colliders = [];
+  const out = new Out(), colliders = [], corals = [], weeds = [];
   const x0 = cx * CS, z0 = cz * CS;
   const nrm = [0, 1, 0];
   const R = (a, b) => a + rng() * (b - a);
@@ -94,6 +94,7 @@ function buildDecor(cx, cz, field, T, seed) {
       const y = ground(x, z);
       const s = R(0.7, 1.9) * (ki === 5 ? 0.8 : 1);
       out.place(pick(fam.list), x, y, z, rng() * 6.28, s, s * R(0.8, 1.3), s, nrm, 0.35, col);
+      corals.push(x, y + s * 0.5, z);
       if (ki === 1 || (ki === 2 && s > 1.4)) colliders.push(x, y + s * (ki === 1 ? 0.2 : 0.7), z, s * (ki === 1 ? 0.9 : 1.2));
     }
   }
@@ -115,6 +116,7 @@ function buildDecor(cx, cz, field, T, seed) {
       const tpl = pick(kind === 'kelp' ? T.kelp : kind === 'tall' ? T.tall : T.grass);
       const s = R(0.75, 1.3);
       out.place(tpl, x, y - 0.05, z, rng() * 6.28, s, s * R(0.8, 1.2), s, nrm, 0.1, col);
+      weeds.push(x, y + (kind === 'kelp' ? 4 : 0.8), z);
     }
   }
 
@@ -125,7 +127,7 @@ function buildDecor(cx, cz, field, T, seed) {
   g.setAttribute('aSway', new THREE.Float32BufferAttribute(out.sway, 1));
   g.computeBoundingSphere();
   if (g.boundingSphere) g.boundingSphere.radius += 6; // sway + patch spill
-  return { geometry: g, colliders };
+  return { geometry: g, colliders, corals: new Float32Array(corals), weeds: new Float32Array(weeds) };
 }
 
 const SAND = new THREE.Color(0xe3cf9a), DEEP = new THREE.Color(0x6b7378), ROCK = new THREE.Color(0x7d7872), REEFSAND = new THREE.Color(0xcdc196);
@@ -185,7 +187,7 @@ export class Terrain {
     const tm = new THREE.Mesh(tg, this.terrainMat); this.scene.add(tm);
     const d = buildDecor(cx, cz, this.field, this.T, this.seed);
     const dm = new THREE.Mesh(d.geometry, this.decorMat); this.scene.add(dm);
-    this.chunks.set(this.key(cx, cz), { cx, cz, tm, dm, colliders: d.colliders });
+    this.chunks.set(this.key(cx, cz), { cx, cz, tm, dm, colliders: d.colliders, corals: d.corals, weeds: d.weeds });
   }
   _drop(ch) {
     this.scene.remove(ch.tm); this.scene.remove(ch.dm);

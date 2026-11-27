@@ -95,7 +95,7 @@ export class Shafts {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], 2));
     const base = new Float32Array(count * 3), ph = new Float32Array(count);
     for (let i = 0; i < count; i++) { base[i * 3] = Math.random() * 300; base[i * 3 + 1] = Math.random() * 300; base[i * 3 + 2] = 5 + Math.random() * 14; ph[i] = Math.random(); }
-    geo.setAttribute('aBase', new THREE.InstancedBufferAttribute(base, 3));
+    geo.setAttribute('aBase', new THREE.InstancedBufferAttribute(base, 3)); this.base = base; this.count = count;
     geo.setAttribute('aPh', new THREE.InstancedBufferAttribute(ph, 1));
     geo.instanceCount = count;
     this.u = { uTime: shared.uTime, uCam: { value: new THREE.Vector3() }, uInt: { value: 0.2 }, uCol: { value: new THREE.Color(.55, .9, 1) }, uSun: { value: new THREE.Vector3(0.22, -1, 0.12).normalize() } };

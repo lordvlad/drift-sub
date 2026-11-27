@@ -76,14 +76,19 @@ export function createSubModel() {
     g.add(spot); g.add(target); spot.target = target; spots.push(spot);
     const beam = new THREE.Mesh(beamGeo, beamMat); beam.position.copy(lamp.position); beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), target.position.clone().sub(lamp.position).normalize()); beam.visible = false; g.add(beam); beams.push(beam);
   }
+  let hidden = false, lampLevel = 0;
   /** level 0..1 */
   const setLamps = (level) => {
+    lampLevel = level;
     for (const sp of spots) sp.intensity = 38 * level;
     lampMat.color.setRGB(0.25 + 0.75 * level, 0.25 + 0.72 * level, 0.2 + 0.6 * level);
-    beamMat.color.setRGB(0.07 * level, 0.1 * level, 0.12 * level); for (const b of beams) b.visible = level > 0.02;
+    beamMat.color.setRGB(0.07 * level, 0.1 * level, 0.12 * level); for (const b of beams) b.visible = !hidden && level > 0.02;
   };
   g.rotation.order = 'YXZ';
-  return { group: g, prop, disc, setLamps };
+  const bodyMeshes = []; g.traverse((o) => { if (o.isMesh && !beams.includes(o)) bodyMeshes.push(o); });
+  /** first-person (viewfinder): hide hull and beams, lights keep shining */
+  const setHidden = (h) => { if (h === hidden) return; hidden = h; for (const m of bodyMeshes) m.visible = !h; for (const b of beams) b.visible = !h && lampLevel > 0.02; };
+  return { group: g, prop, disc, setLamps, setHidden };
 }
 
 export class Sub {
