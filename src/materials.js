@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const shared = { uTime: { value: 0 } };
+export const shared = { uTime: { value: 0 }, uSwayK: { value: 1 } };
 
 const CAUSTIC = /* glsl */`
 float causticPat(vec2 uv, float t){
@@ -17,15 +17,15 @@ float causticPat(vec2 uv, float t){
 
 function patch(mat, { sway, caustics }) {
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = shared.uTime;
+    shader.uniforms.uTime = shared.uTime; shader.uniforms.uSwayK = shared.uSwayK;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nuniform float uTime;\nvarying vec3 vWPos;\n${sway ? 'attribute float aSway;' : ''}`)
+      .replace('#include <common>', `#include <common>\nuniform float uTime, uSwayK;\nvarying vec3 vWPos;\n${sway ? 'attribute float aSway;' : ''}`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 ${sway ? `{
   vec3 wp = (modelMatrix * vec4(transformed, 1.0)).xyz;
   float ph = wp.x * 0.21 + wp.z * 0.13;
-  transformed.x += aSway * (sin(uTime * 0.9 + ph) * 0.8 + sin(uTime * 1.9 + wp.z * 0.4) * 0.25);
-  transformed.z += aSway * (cos(uTime * 0.7 + wp.z * 0.19 + wp.x * 0.11) * 0.7);
+  transformed.x += aSway * uSwayK * (sin(uTime * 0.9 + ph) * 0.8 + sin(uTime * 1.9 + wp.z * 0.4) * 0.25);
+  transformed.z += aSway * uSwayK * (cos(uTime * 0.7 + wp.z * 0.19 + wp.x * 0.11) * 0.7);
 }` : ''}`)
       .replace('#include <project_vertex>', `#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
     shader.fragmentShader = shader.fragmentShader

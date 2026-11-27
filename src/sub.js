@@ -77,7 +77,7 @@ export class Sub {
     this.yaw = 0; this.pitch = 0; this.roll = 0; this.yawRate = 0; this.pitchRate = 0;
     this.throttle = 0; this.omega = 0; this.speed = 0; this.vf = 0; this.propAngle = 0;
     this.t = 0; this.touchedGround = 0;
-    this.propPos = new THREE.Vector3();
+    this.propPos = new THREE.Vector3(); this.ceil = -2.4;
   }
   update(dt, input, terrain, field) {
     this.t += dt;
@@ -131,7 +131,7 @@ export class Sub {
       if (vn < 0) { v.x -= n[0] * vn * 1.1; v.y -= n[1] * vn * 1.1; v.z -= n[2] * vn * 1.1; this.touchedGround = Math.min(1, -vn / 3); }
     }
     terrain.collide(this.pos, v, 0.9);
-    if (this.pos.y > -2.4) { v.y -= (this.pos.y + 2.4) * 3 * dt; if (this.pos.y > -1.6) { this.pos.y = -1.6; v.y = Math.min(0, v.y); } }
+    if (this.pos.y > this.ceil) { v.y -= (this.pos.y - this.ceil) * 3 * dt; if (this.pos.y > this.ceil + 0.8) { this.pos.y = this.ceil + 0.8; v.y = Math.min(0, v.y); } }
 
     this.speed = v.length();
     this.vf = v.dot(f);

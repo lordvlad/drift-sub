@@ -8,6 +8,7 @@ import { Bubbles, Snow, Shafts, Surface } from './effects.js';
 import { Fauna } from './fauna.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
+import { Weather } from './weather.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -42,6 +43,10 @@ const bubbles = new Bubbles(scene), snow = new Snow(scene), shafts = new Shafts(
 const quality = matchMedia('(pointer: coarse)').matches ? 0.7 : 1;
 const fauna = new Fauna(scene, field, quality);
 const audio = new Audio();
+const weather = new Weather(() => {
+  $('waveBtn').textContent = 'Waves: ' + (weather.mode === 'auto' ? `auto (${weather.state}${weather.status === 'locating' ? '…' : weather.status === 'unavailable' ? ', drifting' : ''})` : weather.mode);
+  $('waveBtn').title = weather.mode === 'auto' ? 'Sea state from local wind: ' + weather.status : 'Manual sea state';
+});
 
 const [sx, sz] = field.findStart();
 sub.pos.set(sx, Math.min(-12, field.heightAt(sx, sz) + 9), sz);
@@ -66,15 +71,18 @@ function setIntroText(touch) {
 }
 $('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.target.blur(); });
 $('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); e.target.textContent = 'Sound: ' + (audio.muted ? 'off' : 'on'); e.target.blur(); });
+$('waveBtn').addEventListener('click', (e) => { weather.cycle(); e.target.blur(); });
+weather.onChange();
 $('tools').addEventListener('pointerdown', (e) => e.stopPropagation());
 
 let started = false;
 $('go').disabled = false; $('go').textContent = 'DIVE';
 $('go').addEventListener('click', () => {
-  started = true; $('intro').classList.add('gone'); audio.start();
+  started = true; $('intro').classList.add('gone'); audio.start(); weather.start();
   setTimeout(() => { $('hint').textContent = input.touchUI ? 'steer gently — the sea is in no hurry' : 'steer gently — the sea is in no hurry'; $('hint').classList.add('show'); setTimeout(() => $('hint').classList.remove('show'), 7000); }, 2500);
 });
 if (params.has('skip')) { started = true; $('intro').classList.add('gone'); }
+if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.has('skip')) weather.start();
 
 // ---------- camera rig ----------
 const cam = { yaw: sub.yaw, pitch: 0, pos: new THREE.Vector3(), look: new THREE.Vector3() };
@@ -87,15 +95,17 @@ function angLerp(a, b, k) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d 
 
 const tmpC = new THREE.Color();
 function updateWater(camY, dt) {
-  const d = clamp(-camY / 80, 0, 1), k = Math.pow(d, 0.7);
+  const W = weather.cur, d = clamp(-camY / 80, 0, 1), k = Math.pow(d, 0.7);
   tmpC.copy(SHALLOW).lerp(DEEP, k);
   scene.background.copy(tmpC); scene.fog.color.copy(tmpC);
   scene.fog.density = 0.0125 + 0.003 * k;
-  hemi.intensity = 1.1 * (1 - 0.55 * k); hemi.color.copy(tmpC).lerp(new THREE.Color(0xffffff), 0.35);
-  sun.intensity = 1.5 * (1 - 0.8 * k);
+  hemi.intensity = 1.1 * W.dim * (1 - 0.55 * k); hemi.color.copy(tmpC).lerp(new THREE.Color(0xffffff), 0.35);
+  sun.intensity = 1.5 * W.dim * (1 - 0.8 * k);
   subModel.spot.intensity = 70 * clamp(k * 1.5 - 0.1, 0, 1);
   surface.u.uFog.value.copy(tmpC); surface.u.uDensity.value = scene.fog.density;
-  shafts.u.uInt.value = 0.22 * (1 - 0.75 * k);
+  shafts.u.uInt.value = 0.22 * (1 - 0.75 * k) * (W.dim < 0.7 ? 0.5 : 1) * (1 + W.gust * 0.3);
+  const su = surface.u; su.uAmp.value = W.amp; su.uFreq.value = W.freq; su.uSpeed.value = W.speed; su.uGust.value = W.gust;
+  shared.uSwayK.value = W.sway; su.uLight.value.setRGB(0.35, 0.8, 0.95).multiplyScalar(W.dim);
   snow.u.uBright.value = 1 - 0.6 * k;
 }
 
@@ -131,7 +141,9 @@ function frame(now) {
   cam.pos.lerp(camDesired, 1 - Math.exp(-dt * 5));
   const gh = field.heightAt(cam.pos.x, cam.pos.z) + 1.0;
   if (cam.pos.y < gh) cam.pos.y = gh;
-  if (cam.pos.y > -1.2) cam.pos.y = -1.2;
+  const crest = weather.cur.amp * (1 + weather.cur.gust);
+  sub.ceil = -2.4 - crest;
+  if (cam.pos.y > -1.2 - crest) cam.pos.y = -1.2 - crest;
   camera.position.copy(cam.pos);
   _tmp.copy(sub.pos).addScaledVector(sub.fwd, 3.2); _tmp.y += 0.2;
   cam.look.lerp(_tmp, 1 - Math.exp(-dt * 8));
@@ -139,8 +151,9 @@ function frame(now) {
   const fov = 62 + Math.min(8, sub.speed * 0.8);
   if (Math.abs(fov - camera.fov) > 0.05) { camera.fov += (fov - camera.fov) * 0.1; camera.updateProjectionMatrix(); }
 
+  weather.update(dt);
   updateWater(camera.position.y, dt);
-  surface.mesh.position.set(camera.position.x, 0, camera.position.z);
+  surface.follow(camera.position);
   snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position);
   audio.update(dt, sub, fauna.whaleLevel);
 
@@ -151,4 +164,4 @@ function frame(now) {
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = { sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+window.__sim = { weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };

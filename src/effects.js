@@ -119,19 +119,39 @@ export class Shafts {
   }
 }
 
-/** The shimmering ceiling, seen from below. */
+/** The ceiling seen from below: displaced, weather-driven waves. Plane follows the camera, snapped to the grid so vertices don't swim. */
+const SURF_SIZE = 700, SURF_SEG = 220;
+export const SURF_CELL = SURF_SIZE / SURF_SEG;
 export class Surface {
   constructor(scene) {
-    const g = new THREE.PlaneGeometry(900, 900); g.rotateX(-Math.PI / 2);
-    this.u = { uTime: shared.uTime, uFog: { value: new THREE.Color() }, uDensity: { value: 0.013 }, uLight: { value: new THREE.Color(0.35, 0.8, 0.95) } };
+    const g = new THREE.PlaneGeometry(SURF_SIZE, SURF_SIZE, SURF_SEG, SURF_SEG); g.rotateX(-Math.PI / 2);
+    this.u = {
+      uTime: shared.uTime, uFog: { value: new THREE.Color() }, uDensity: { value: 0.013 }, uLight: { value: new THREE.Color(0.35, 0.8, 0.95) },
+      uAmp: { value: 0.3 }, uFreq: { value: 1 }, uSpeed: { value: 1 }, uGust: { value: 0 },
+    };
+    const WAVES = `
+uniform float uTime, uAmp, uFreq, uSpeed, uGust;
+const vec4 WV[6] = vec4[6](vec4(.92,.39,.30,.42), vec4(-.5,.87,.55,.28), vec4(.2,-.98,.80,.18), vec4(-.9,-.43,1.25,.10), vec4(.6,.8,2.1,.05), vec4(-.3,-.95,3.4,.03));
+// returns height; grad = d(height)/d(xz). n = number of octaves used
+float waves(vec2 p, int n, out vec2 grad){
+  float gm = 1. + uGust * (.5 * sin(p.x * .021 + uTime * .23) + .5 * sin(p.y * .017 - uTime * .31));
+  float h = 0.; grad = vec2(0.);
+  for (int i = 0; i < 6; i++) { if (i >= n) break;
+    vec4 w = WV[i]; float k = w.z * uFreq, ph = dot(w.xy, p) * k + uTime * uSpeed * sqrt(k) * 1.6 + float(i) * 1.7;
+    float a = w.w * uAmp * gm; h += a * sin(ph); grad += a * k * cos(ph) * w.xy; }
+  return h;
+}`;
     this.mat = new THREE.ShaderMaterial({
       uniforms: this.u, side: THREE.DoubleSide,
-      vertexShader: `varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`,
-      fragmentShader: `uniform float uTime, uDensity; uniform vec3 uFog, uLight; varying vec3 vW;
-        void main(){ float d=length(vW-cameraPosition); vec2 p=vW.xz*.1;
-          float w=sin(p.x*3.+uTime*.8)+sin(p.y*2.3-uTime*.6)+sin((p.x+p.y)*4.1+uTime*1.1)+sin(p.x*7.-p.y*5.+uTime*1.5)*.5;
-          float glint=smoothstep(1.6,3.,w);
-          vec3 c=uLight*(.8+.12*w)+glint*vec3(.5,.7,.7);
+      vertexShader: `${WAVES}
+        varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vec2 gr; w.y+=waves(w.xz,4,gr); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`,
+      fragmentShader: `${WAVES}
+        uniform vec3 uFog, uLight; uniform float uDensity; varying vec3 vW;
+        void main(){ float d=length(vW-cameraPosition); vec2 g; waves(vW.xz,6,g);
+          vec3 n=normalize(vec3(-g.x,1.,-g.y)); vec3 vd=normalize(cameraPosition-vW);
+          float sl=length(g); float glint=smoothstep(.25,.9,sl)*.55+pow(max(dot(reflect(-vd,n),normalize(vec3(.3,-1.,.2))),0.),24.)*.4;
+          vec2 p=vW.xz*.1; float w=sin(p.x*3.+uTime*.8)+sin(p.y*2.3-uTime*.6)+sin((p.x+p.y)*4.1+uTime*1.1);
+          vec3 c=uLight*(.8+.04*w+g.x*.25-g.y*.15)+glint*vec3(.5,.7,.7);
           c*=exp(-max(-cameraPosition.y,0.)*.018);
           float f=1.-exp(-pow(d*uDensity,2.)); c=mix(c,uFog,f);
           gl_FragColor=vec4(c,1.);
@@ -140,4 +160,5 @@ export class Surface {
     });
     this.mesh = new THREE.Mesh(g, this.mat); this.mesh.frustumCulled = false; scene.add(this.mesh);
   }
+  follow(cam) { this.mesh.position.set(Math.round(cam.x / SURF_CELL) * SURF_CELL, 0, Math.round(cam.z / SURF_CELL) * SURF_CELL); }
 }
