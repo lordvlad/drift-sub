@@ -98,7 +98,7 @@ export class Shafts {
     geo.setAttribute('aBase', new THREE.InstancedBufferAttribute(base, 3));
     geo.setAttribute('aPh', new THREE.InstancedBufferAttribute(ph, 1));
     geo.instanceCount = count;
-    this.u = { uTime: shared.uTime, uCam: { value: new THREE.Vector3() }, uInt: { value: 0.2 }, uSun: { value: new THREE.Vector3(0.22, -1, 0.12).normalize() } };
+    this.u = { uTime: shared.uTime, uCam: { value: new THREE.Vector3() }, uInt: { value: 0.2 }, uCol: { value: new THREE.Color(.55, .9, 1) }, uSun: { value: new THREE.Vector3(0.22, -1, 0.12).normalize() } };
     this.mat = new THREE.ShaderMaterial({
       uniforms: this.u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       vertexShader: `attribute vec3 aBase; attribute float aPh; uniform vec3 uCam; uniform vec3 uSun; varying vec2 vUv; varying float vPh; varying float vD;
@@ -107,11 +107,11 @@ export class Shafts {
           vec3 axis=bot-top; vec3 vd=normalize(uCam-pt); vec3 side=normalize(cross(axis,vd));
           vec3 w=pt+side*position.x*aBase.z; vUv=uv; vPh=aPh; vD=length(uCam-w);
           gl_Position=projectionMatrix*viewMatrix*vec4(w,1.); }`,
-      fragmentShader: `uniform float uTime, uInt; varying vec2 vUv; varying float vPh; varying float vD;
+      fragmentShader: `uniform float uTime, uInt; uniform vec3 uCol; varying vec2 vUv; varying float vPh; varying float vD;
         void main(){ float ac=1.-abs(vUv.x*2.-1.); ac=pow(ac,1.6); float al=pow(1.-vUv.y,1.3);
           float fl=.65+.35*sin(vUv.y*7.+uTime*.6+vPh*20.)*sin(uTime*.31+vPh*9.+vUv.x*3.);
           float a=ac*al*fl*uInt*smoothstep(170.,50.,vD)*smoothstep(1.,9.,vD);
-          gl_FragColor=vec4(vec3(.55,.9,1.)*a,1.);
+          gl_FragColor=vec4(uCol*a,1.);
           #include <colorspace_fragment>
         }`,
     });

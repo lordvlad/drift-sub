@@ -58,15 +58,31 @@ export function createSubModel() {
   }
   const disc = new THREE.Mesh(new THREE.CircleGeometry(0.25, 20), new THREE.MeshBasicMaterial({ color: 0xcfeaff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
   disc.position.z = -0.02; prop.add(disc);
-  // headlights
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6c8 }));
-  lamp.position.set(0, -0.18, 1.18); g.add(lamp);
-  const spot = new THREE.SpotLight(0xdff6ff, 0, 70, 0.55, 0.7, 1.2);
-  spot.position.set(0, -0.1, 1.1);
-  const target = new THREE.Object3D(); target.position.set(0, -0.3, 8);
-  g.add(spot); g.add(target); spot.target = target;
+  // twin headlights: lamp, spot and soft beam on each side
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff6c8 });
+  const beamGeo = new THREE.ConeGeometry(1.7, 14, 18, 1, true); beamGeo.rotateX(-Math.PI / 2); beamGeo.translate(0, 0, 7);
+  { const p = beamGeo.attributes.position, c = new Float32Array(p.count * 3); // bright at the lamp, black (= invisible when additive) at the far rim
+    for (let i = 0; i < p.count; i++) { const t = p.getZ(i) / 14, f = Math.min(1, t / 0.12) * Math.pow(1 - t, 2.5); c[i * 3] = c[i * 3 + 1] = c[i * 3 + 2] = f; }
+    beamGeo.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0x000000, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const spots = [], beams = [];
+  for (const s of [-1, 1]) {
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), lampMat);
+    lamp.position.set(s * 0.3, -0.14, 1.12); g.add(lamp);
+    const spot = new THREE.SpotLight(0xdff6ff, 0, 60, 0.5, 0.7, 1.2);
+    spot.position.copy(lamp.position);
+    const target = new THREE.Object3D(); target.position.set(s * 0.9, -0.5, 9);
+    g.add(spot); g.add(target); spot.target = target; spots.push(spot);
+    const beam = new THREE.Mesh(beamGeo, beamMat); beam.position.copy(lamp.position); beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), target.position.clone().sub(lamp.position).normalize()); beam.visible = false; g.add(beam); beams.push(beam);
+  }
+  /** level 0..1 */
+  const setLamps = (level) => {
+    for (const sp of spots) sp.intensity = 38 * level;
+    lampMat.color.setRGB(0.25 + 0.75 * level, 0.25 + 0.72 * level, 0.2 + 0.6 * level);
+    beamMat.color.setRGB(0.07 * level, 0.1 * level, 0.12 * level); for (const b of beams) b.visible = level > 0.02;
+  };
   g.rotation.order = 'YXZ';
-  return { group: g, prop, disc, spot };
+  return { group: g, prop, disc, setLamps };
 }
 
 export class Sub {

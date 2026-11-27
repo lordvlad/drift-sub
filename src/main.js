@@ -9,6 +9,7 @@ import { Fauna } from './fauna.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Weather } from './weather.js';
+import { Daylight } from './daylight.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -20,7 +21,6 @@ const canvas = $('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 let pixelRatio = Math.min(devicePixelRatio || 1, 2);
 const scene = new THREE.Scene();
-const SHALLOW = new THREE.Color(0x1d9fc0), DEEP = new THREE.Color(0x041a2e);
 scene.background = new THREE.Color(); scene.fog = new THREE.FogExp2(0x1d9fc0, 0.013);
 const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 320);
 const hemi = new THREE.HemisphereLight(0xa8ecff, 0x6a6a58, 1.1); scene.add(hemi);
@@ -67,12 +67,21 @@ const input = new Input(canvas, ui);
 function setIntroText(touch) {
   $('introText').innerHTML = touch
     ? 'Left stick: forward &amp; back.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
-    : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
+    : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
 }
 $('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.target.blur(); });
 $('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); e.target.textContent = 'Sound: ' + (audio.muted ? 'off' : 'on'); e.target.blur(); });
 $('waveBtn').addEventListener('click', (e) => { weather.cycle(); e.target.blur(); });
 weather.onChange();
+const daylight = new Daylight(() => { $('timeBtn').textContent = 'Time: ' + (daylight.mode === 'auto' ? `auto (${daylight.phase})` : daylight.mode); });
+daylight.onChange();
+const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
+const lampLabel = () => { $('lampBtn').textContent = 'Lamps: ' + lampMode; };
+const cycleLamps = () => { lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); };
+lampLabel();
+$('timeBtn').addEventListener('click', (e) => { daylight.cycle(); e.target.blur(); });
+$('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.target.blur(); });
+addEventListener('keydown', (e) => { if (e.code === 'KeyF' && !e.repeat) cycleLamps(); });
 $('tools').addEventListener('pointerdown', (e) => e.stopPropagation());
 
 let started = false;
@@ -95,17 +104,20 @@ function angLerp(a, b, k) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d 
 
 const tmpC = new THREE.Color();
 function updateWater(camY, dt) {
-  const W = weather.cur, d = clamp(-camY / 80, 0, 1), k = Math.pow(d, 0.7);
-  tmpC.copy(SHALLOW).lerp(DEEP, k);
+  const W = weather.cur, L = daylight.cur, d = clamp(-camY / 80, 0, 1), k = Math.pow(d, 0.7);
+  daylight.update(dt);
+  tmpC.copy(L.shallow).lerp(L.deep, k);
   scene.background.copy(tmpC); scene.fog.color.copy(tmpC);
   scene.fog.density = 0.0125 + 0.003 * k;
-  hemi.intensity = 1.1 * W.dim * (1 - 0.55 * k); hemi.color.copy(tmpC).lerp(new THREE.Color(0xffffff), 0.35);
-  sun.intensity = 1.5 * W.dim * (1 - 0.8 * k);
-  subModel.spot.intensity = 70 * clamp(k * 1.5 - 0.1, 0, 1);
+  hemi.intensity = L.hemiI * W.dim * (1 - 0.55 * k); hemi.color.copy(L.sky).lerp(tmpC, 0.2);
+  sun.intensity = L.sunI * W.dim * (1 - 0.8 * k); sun.color.copy(L.sun);
+  const lampTarget = lampMode === 'on' ? 1 : lampMode === 'off' ? 0 : clamp(k * 1.5 - 0.1 + daylight.darkness * 1.3, 0, 1);
+  lampLevel += (lampTarget - lampLevel) * (1 - Math.exp(-dt * 3)); subModel.setLamps(lampLevel);
   surface.u.uFog.value.copy(tmpC); surface.u.uDensity.value = scene.fog.density;
-  shafts.u.uInt.value = 0.22 * (1 - 0.75 * k) * (W.dim < 0.7 ? 0.5 : 1) * (1 + W.gust * 0.3);
+  shafts.u.uInt.value = L.shaft * (1 - 0.75 * k) * (W.dim < 0.7 ? 0.5 : 1) * (1 + W.gust * 0.3);
   const su = surface.u; su.uAmp.value = W.amp; su.uFreq.value = W.freq; su.uSpeed.value = W.speed; su.uGust.value = W.gust;
-  shared.uSwayK.value = W.sway; su.uLight.value.setRGB(0.35, 0.8, 0.95).multiplyScalar(W.dim);
+  shared.uSwayK.value = W.sway; su.uLight.value.copy(L.surf).multiplyScalar(W.dim);
+  shafts.u.uSun.value.set(L.lean * 0.6, -1, 0.12).normalize(); shafts.u.uCol.value.copy(L.sun).lerp(new THREE.Color(0x8fe6ff), 0.45);
   snow.u.uBright.value = 1 - 0.6 * k;
 }
 

@@ -11,7 +11,7 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #06222f; font-family: ui-rounded, "Segoe UI", system-ui, sans-serif; color: #dff6ff; touch-action: none; overscroll-behavior: none; }
   canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   #hud { position: fixed; left: 16px; top: 14px; font-size: 13px; letter-spacing: .06em; opacity: .65; pointer-events: none; text-shadow: 0 1px 6px #0008; line-height: 1.5; font-variant-numeric: tabular-nums; }
-  #tools { position: fixed; right: 12px; top: 12px; display: flex; gap: 8px; z-index: 5; }
+  #tools { position: fixed; right: 12px; top: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: min(640px, calc(100vw - 150px)); z-index: 5; }
   #tools button, .pad { font: inherit; font-size: 12px; color: #dff6ff; background: #0b2f4466; border: 1px solid #9fe3ff44; border-radius: 999px; padding: 7px 13px; backdrop-filter: blur(6px); cursor: pointer; }
   #tools button:hover { background: #0b2f4499; }
   #intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; background: radial-gradient(ellipse at 50% 40%, #0e5b7acc, #04141fee); z-index: 10; transition: opacity 1.2s ease; padding: 24px; }
@@ -37,7 +37,7 @@
 <body>
 <canvas id="view"></canvas>
 <div id="hud"><div id="depth"></div><div id="speed"></div></div>
-<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls">Controls: auto</button><button id="waveBtn" title="Sea state">Waves: auto</button><button id="soundBtn">Sound: on</button></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls">Controls: auto</button><button id="timeBtn" title="Time of day (auto = your clock)">Time: auto</button><button id="lampBtn" title="Headlights (F)">Lamps: auto</button><button id="waveBtn" title="Sea state">Waves: auto</button><button id="soundBtn">Sound: on</button></div>
 <div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="hint"></div>
 <div id="intro">
