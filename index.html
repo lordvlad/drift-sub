@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a3a55">
+<title>Drift — a quiet submarine</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #06222f; font-family: ui-rounded, "Segoe UI", system-ui, sans-serif; color: #dff6ff; touch-action: none; overscroll-behavior: none; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud { position: fixed; left: 16px; top: 14px; font-size: 13px; letter-spacing: .06em; opacity: .65; pointer-events: none; text-shadow: 0 1px 6px #0008; line-height: 1.5; font-variant-numeric: tabular-nums; }
+  #tools { position: fixed; right: 12px; top: 12px; display: flex; gap: 8px; z-index: 5; }
+  #tools button, .pad { font: inherit; font-size: 12px; color: #dff6ff; background: #0b2f4466; border: 1px solid #9fe3ff44; border-radius: 999px; padding: 7px 13px; backdrop-filter: blur(6px); cursor: pointer; }
+  #tools button:hover { background: #0b2f4499; }
+  #intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; background: radial-gradient(ellipse at 50% 40%, #0e5b7acc, #04141fee); z-index: 10; transition: opacity 1.2s ease; padding: 24px; }
+  #intro.gone { opacity: 0; pointer-events: none; }
+  #intro h1 { font-weight: 300; font-size: clamp(34px, 7vw, 64px); letter-spacing: .3em; margin: 0 0 0 .3em; }
+  #intro p { margin: 0; opacity: .8; font-size: 14px; line-height: 1.8; max-width: 520px; }
+  #intro kbd { background: #ffffff1a; border: 1px solid #ffffff33; border-radius: 5px; padding: 1px 7px; font: inherit; font-size: 12px; }
+  #go { margin-top: 10px; font: inherit; font-size: 16px; letter-spacing: .2em; color: #06222f; background: #ffd21f; border: 0; border-radius: 999px; padding: 13px 38px; cursor: pointer; box-shadow: 0 8px 30px #ffd21f44; }
+  #go:disabled { opacity: .5; cursor: default; }
+  #touchui { position: fixed; inset: 0; pointer-events: none; z-index: 4; display: none; }
+  body.touch #touchui { display: block; }
+  #joy { position: absolute; left: max(22px, env(safe-area-inset-left)); bottom: max(26px, env(safe-area-inset-bottom)); width: 140px; height: 140px; border-radius: 50%; background: #0b2f4455; border: 1px solid #9fe3ff55; pointer-events: auto; touch-action: none; display: grid; place-items: center; backdrop-filter: blur(4px); }
+  #knob { width: 58px; height: 58px; border-radius: 50%; background: #ffd21fcc; box-shadow: 0 4px 16px #0006; pointer-events: none; }
+  .vbtn { position: absolute; right: max(22px, env(safe-area-inset-right)); width: 64px; height: 64px; border-radius: 50%; background: #0b2f4466; border: 1px solid #9fe3ff55; color: #dff6ff; font-size: 22px; display: grid; place-items: center; pointer-events: auto; touch-action: none; backdrop-filter: blur(4px); }
+  .vbtn.on { background: #ffd21f99; }
+  #btnUp { bottom: calc(max(26px, env(safe-area-inset-bottom)) + 76px); }
+  #btnDown { bottom: max(26px, env(safe-area-inset-bottom)); }
+  #hint { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); font-size: 13px; opacity: 0; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 6px #000a; letter-spacing: .05em; text-align: center; }
+  #hint.show { opacity: .75; }
+  body.touch #hint { bottom: auto; top: 54px; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hud"><div id="depth"></div><div id="speed"></div></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls">Controls: auto</button><button id="soundBtn">Sound: on</button></div>
+<div id="touchui"><div id="joy"><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
+<div id="hint"></div>
+<div id="intro">
+  <h1>DRIFT</h1>
+  <p id="introText"></p>
+  <button id="go" disabled>Loading…</button>
+</div>
+<script src="main.js" type="module"></script>
+</body>
+</html>
