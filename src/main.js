@@ -3,7 +3,7 @@ import { createField } from './world.js';
 import { buildTemplates } from './templates.js';
 import { Terrain, CS } from './terrain.js';
 import { makeTerrainMaterial, makeDecorMaterial, shared } from './materials.js';
-import { createSubModel, Sub } from './sub.js';
+import { createSubModel, Sub, MAX_DEPTH } from './sub.js';
 import { Bubbles, Snow, Shafts, Surface } from './effects.js';
 import { Fauna } from './fauna.js';
 import { Input } from './input.js';
@@ -185,6 +185,23 @@ function updateWater(camY, dt) {
   snow.u.uBright.value = 1 - 0.6 * k;
 }
 
+// ---------- depth gauge ----------
+const gTicks = $('gTicks'), gMark = $('gMark'), gauge = $('gauge');
+$('gMax').textContent = MAX_DEPTH + 'm'; $('gDanger').style.height = (8 / MAX_DEPTH * 100) + '%';
+for (let m = 0; m <= MAX_DEPTH; m += 5) {
+  const t = document.createElement('div'); t.style.top = (m / MAX_DEPTH * 100) + '%'; if (m % 10 === 0) { t.className = 'maj'; if (m) t.innerHTML = `<span>${m}m</span>`; }
+  gTicks.appendChild(t);
+}
+let gShown = '';
+function updateGauge() {
+  const d = clamp(-sub.pos.y, 0, MAX_DEPTH);
+  gMark.style.top = (d / MAX_DEPTH * 100) + '%';
+  const txt = d.toFixed(1), red = sub.limit > 0.01;
+  if (txt !== gShown) { gShown = txt; $('gVal').textContent = '-' + txt + 'm'; $('gNow').textContent = Math.round(d) + 'm'; }
+  gauge.classList.toggle('red', red);
+  $('gMax').textContent = MAX_DEPTH + 'm' + (sub.limit > 0.95 ? ' — limit reached' : '');
+}
+
 // ---------- loop ----------
 let last = performance.now(), fpsAcc = 0, fpsN = 0, lowTime = 0;
 const _tmp = new THREE.Vector3();
@@ -242,7 +259,7 @@ function frame(now) {
     }
   }
 
-  $('depth').textContent = `depth ${(-sub.pos.y).toFixed(0)} m`;
+  updateGauge();
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
   renderer.render(scene, camera);
 }

@@ -17,7 +17,7 @@ export function createField(seed) {
   const rockAt = (x, z) => sstep(0.3, 0.7, n3(x * 0.0045 - 300, z * 0.0045 + 120));
   const weedAt = (x, z) => sstep(0.1, 0.5, n2(x * 0.0065 + 31, z * 0.0065 + 8));
   function heightAt(x, z) {
-    let h = -46 + fbm(n1, x * 0.0021, z * 0.0021, 3) * 30;
+    let h = -64 + fbm(n1, x * 0.0021, z * 0.0021, 3) * 44;
     h += fbm(n2, x * 0.011, z * 0.011, 3) * 5;
     const rm = rockAt(x, z);
     const ridge = 1 - Math.abs(n3(x * 0.0105 + 9, z * 0.0105 - 4));

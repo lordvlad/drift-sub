@@ -8,6 +8,7 @@ A quiet underwater exploration toy: steer a small yellow submarine through an en
 - **Fullscreen:** a dismissible banner suggests it a few seconds after diving (hidden where the Fullscreen API is missing, e.g. iPhone Safari).
 - **PWA:** installable (manifest + service worker; works offline after the first visit). Add `?nosw` to skip the service worker.
 - **Snapshots:** `P` or the camera button captures what the sub sees (hull hidden, up to 1920 px, JPEG). The album keeps the newest 100 in IndexedDB on your device; open it from "Album", view, download or delete. Nothing is uploaded.
+- **Depth:** left-side gauge shows depth; the sub is limited to 60 m (turns red and pushes back near the limit) even though the seabed goes deeper.
 - **Touch:** left stick = forward/back only, drag elsewhere to steer, ▲ ▼ rise/dive. The "Controls" button (top right) cycles auto / touch / keys.
 - World = pure function of `?seed=N`; only a 5×5 window of seabed chunks is ever in memory.
 
