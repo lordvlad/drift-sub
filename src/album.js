@@ -38,12 +38,27 @@ export class Store {
   }
 }
 
-/** Pearls earned by selling snapshots (kept on this device only). */
+/**
+ * Pearls earned by selling snapshots (kept on this device only), plus a memory of which compositions were already sold:
+ * each sale of a composition makes the next similar shot worth less (x0.55 per earlier sale, floor x0.1). Capped at 400 keys.
+ */
 export class Wallet {
-  constructor() { this.n = 0; try { this.n = Number(localStorage.getItem('drift-pearls')) || 0; } catch {} }
-  add(v) { this.n += v; try { localStorage.setItem('drift-pearls', String(this.n)); } catch {} }
+  constructor() {
+    this.n = 0; this.sold = new Map();
+    try { this.n = Number(localStorage.getItem('drift-pearls')) || 0; this.sold = new Map(JSON.parse(localStorage.getItem('drift-sold') || '[]')); } catch {}
+  }
+  _save() { try { localStorage.setItem('drift-pearls', String(this.n)); localStorage.setItem('drift-sold', JSON.stringify([...this.sold])); } catch {} }
+  add(v) { this.n += v; this._save(); }
+  repeats(key) { return key ? this.sold.get(key) || 0 : 0; }
+  mult(key) { return Math.max(0.1, Math.pow(0.55, this.repeats(key))); }
+  price(rec) { return Math.max(1, Math.round((rec.value ?? 2) * this.mult(rec.key))); }
+  markSold(key) {
+    if (!key) return;
+    const n = this.sold.get(key) || 0; this.sold.delete(key); this.sold.set(key, n + 1); // re-insert = most recent
+    while (this.sold.size > 400) this.sold.delete(this.sold.keys().next().value);
+    this._save();
+  }
 }
-export const valueOf = (rec) => rec.value ?? 2;
 
 const pad = (n) => String(n).padStart(2, '0');
 export const fileName = (t) => { const d = new Date(t); return `drift-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.jpg`; };
@@ -59,7 +74,6 @@ export class AlbumUI {
     this.store = store; this.wallet = wallet; this.onChange = onChange; this.say = say; this.urls = []; this.items = []; this.cur = -1; this.fullUrl = null;
     const $ = (id) => document.getElementById(id);
     this.root = $('album'); this.grid = $('albumGrid'); this.count = $('albumCount'); this.viewer = $('albumView'); this.img = $('albumImg'); this.cap = $('albumCap'); this.coins = $('albumCoins'); this.vval = $('viewVal'); this.vitems = $('viewItems'); this.sellBtn = $('viewSell');
-    this.sellAll = $('sellAll');
     $('albumClose').addEventListener('click', () => this.close());
     $('viewClose').addEventListener('click', () => this.closeViewer());
     $('viewPrev').addEventListener('click', () => this.show(this.cur + 1));   // list is newest-first: "previous" = older
@@ -67,7 +81,6 @@ export class AlbumUI {
     $('viewDl').addEventListener('click', () => download(this.items[this.cur]));
     $('viewDel').addEventListener('click', () => this.del());
     this.sellBtn.addEventListener('click', () => this.sell());
-    this.sellAll.addEventListener('click', () => this.sellEverything());
     addEventListener('keydown', (e) => {
       if (this.root.hidden) return;
       if (e.code === 'Escape') this.viewer.hidden ? this.close() : this.closeViewer();
@@ -88,7 +101,7 @@ export class AlbumUI {
     this.root.classList.toggle('empty', !this.items.length);
     this.items.forEach((rec, i) => {
       const u = URL.createObjectURL(rec.thumb); this.urls.push(u);
-      const b = document.createElement('button'); b.className = 'thumb'; b.style.backgroundImage = `url(${u})`; b.title = new Date(rec.t).toLocaleString(); b.innerHTML = `<span class="price">◎ ${valueOf(rec)}</span>`;
+      const b = document.createElement('button'); b.className = 'thumb'; b.style.backgroundImage = `url(${u})`; b.title = new Date(rec.t).toLocaleString(); b.innerHTML = `<span class="price">◎ ${this.wallet.price(rec)}</span>`;
       b.addEventListener('click', () => this.show(i)); this.grid.appendChild(b);
     });
     this.onChange(this.items.length);
@@ -99,26 +112,21 @@ export class AlbumUI {
     if (this.fullUrl) URL.revokeObjectURL(this.fullUrl);
     this.fullUrl = URL.createObjectURL(rec.full); this.img.src = this.fullUrl;
     this.cap.textContent = `${new Date(rec.t).toLocaleString()} · ${rec.meta || ''}`;
-    this.vval.textContent = `◎ ${valueOf(rec)}`; this.sellBtn.textContent = `Sell for ◎ ${valueOf(rec)}`;
-    this.vitems.textContent = ''; for (const [l, a] of rec.items || [['Unscored snapshot', '+2']]) { const r = document.createElement('div'); r.innerHTML = '<span></span><b></b>'; r.firstChild.textContent = l; r.lastChild.textContent = a; this.vitems.appendChild(r); }
+    this.vval.textContent = `◎ ${this.wallet.price(rec)}`; this.sellBtn.textContent = `Sell for ◎ ${this.wallet.price(rec)}`;
+    this.vitems.textContent = ''; const rp = this.wallet.repeats(rec.key), rows = (rec.items || [['Unscored snapshot', '+2']]).slice(); if (rp) rows.push([`Already sold ${rp} similar`, '×' + this.wallet.mult(rec.key).toFixed(2)]);
+    for (const [l, a] of rows) { const r = document.createElement('div'); r.innerHTML = '<span></span><b></b>'; r.firstChild.textContent = l; r.lastChild.textContent = a; this.vitems.appendChild(r); }
     this.viewer.hidden = false;
   }
   closeViewer() { this.viewer.hidden = true; this.img.removeAttribute('src'); if (this.fullUrl) { URL.revokeObjectURL(this.fullUrl); this.fullUrl = null; } }
   updateCoins() {
-    const total = this.items.reduce((a, r) => a + valueOf(r), 0);
-    this.coins.textContent = `◎ ${this.wallet.n} pearls`; this.sellAll.textContent = `Sell all (◎ ${total})`; this.sellAll.disabled = !this.items.length;
+    this.coins.textContent = `◎ ${this.wallet.n} pearls`;
   }
   async sell() {
     const rec = this.items[this.cur]; if (!rec) return;
-    const v = valueOf(rec); this.wallet.add(v); await this.store.remove(rec.id);
+    const v = this.wallet.price(rec); this.wallet.add(v); this.wallet.markSold(rec.key); await this.store.remove(rec.id);
     const next = Math.min(this.cur, this.items.length - 2);
     await this.refresh(); next >= 0 ? this.show(next) : this.closeViewer();
     this.say(`Sold for ◎ ${v} · ${this.wallet.n} pearls`);
-  }
-  async sellEverything() {
-    if (!this.items.length || !confirm(`Sell all ${this.items.length} snapshots?`)) return;
-    let v = 0; for (const r of this.items) { v += valueOf(r); await this.store.remove(r.id); }
-    this.wallet.add(v); await this.refresh(); this.say(`Sold everything for ◎ ${v} · ${this.wallet.n} pearls`);
   }
   async del() {
     const rec = this.items[this.cur]; if (!rec) return;

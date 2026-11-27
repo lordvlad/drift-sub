@@ -169,7 +169,7 @@ async function finishSnapshot({ buf, w, h, meta, score }) {
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
   const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
-  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, items: score.items, species: score.species }); const n = (await store.list()).length; $('albumBtn').textContent = `Album (${n})`; toast(`Saved · worth ◎ ${score.value}${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
+  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species }); const n = (await store.list()).length; $('albumBtn').textContent = `Album (${n})`; toast(`Saved · worth ◎ ${wallet.price(score)}${wallet.repeats(score.key) ? " (seen before)" : ""}${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
   catch { toast('Could not save snapshot (storage full?)'); }
 }
 

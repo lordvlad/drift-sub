@@ -31,8 +31,8 @@ export function scorePhoto(ctx) {
     const frac = len / d / tanH;
     if (frac < minFrac) return false;
     const n = inView(camera, x, y, z, tmp); if (!n) return false;
-    let e = seen.get(sp.id); if (!e) seen.set(sp.id, e = { sp, kind, count: 0, frac: 0, cent: 0 });
-    e.count++; e.frac = Math.max(e.frac, frac); e.cent += 1 - clamp(Math.hypot(n.x, n.y) / 1.2, 0, 1);
+    let e = seen.get(sp.id); if (!e) seen.set(sp.id, e = { sp, kind, count: 0, frac: 0, cent: 0, cx: 0 });
+    e.count++; e.cx += n.x; e.frac = Math.max(e.frac, frac); e.cent += 1 - clamp(Math.hypot(n.x, n.y) / 1.2, 0, 1);
     return true;
   };
 
@@ -110,8 +110,15 @@ export function scorePhoto(ctx) {
   if (ph === 'morning' || ph === 'dawn' || ph === 'evening') { total *= 1.1; items.push(['Golden hour', null, 1.1]); }
   if (depth >= 40) { total *= 1.1; items.push(['Deep dive', null, 1.1]); }
   const value = Math.max(1, Math.round(total));
+  // composition fingerprint: species + rough group size + which third of the frame + scenery buckets + depth band + light
+  const parts = [...seen.values()].filter((e) => e.kind !== 'calf').sort((a, b) => (a.sp.id < b.sp.id ? -1 : 1))
+    .map((e) => `${e.sp.id}:${Math.min(3, Math.round(Math.log2(e.count)))}:${Math.min(2, Math.floor((e.cx / e.count + 1) * 1.5))}`);
+  if (calf) parts.push('calf');
+  parts.push(`c${coral ? 1 + Math.min(2, Math.floor(coral / 6)) : 0}`, `r${rays ? 1 : 0}`, `d${Math.floor(depth / 15)}`, ph === 'night' ? 'n' : ph === 'day' ? 'd' : 'g');
+  let h = 5381; const sig = parts.join('|'); for (let i = 0; i < sig.length; i++) h = ((h * 33) ^ sig.charCodeAt(i)) >>> 0;
+  const key = 'k' + h.toString(36);
   return {
-    value, species: names,
+    value, key, species: names,
     items: items.map(([label, amt, m]) => m ? [label, '×' + m.toFixed(2)] : [label, '+' + Math.round(amt)]),
   };
 }
