@@ -191,3 +191,5 @@ const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLook
 resize(); addEventListener('resize', resize);
 requestAnimationFrame((n) => { last = n; frame(n); });
 window.__sim = { weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed };
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:' && !params.has('nosw')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
