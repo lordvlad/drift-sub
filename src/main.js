@@ -77,7 +77,7 @@ function setIntroText(touch) {
 $('modeBtn').addEventListener('click', (e) => { input.cycleMode(); say(`controls: ${modeLabel()}`); e.currentTarget.blur(); });
 // toggle feedback goes to the same quiet line as the other calming notes
 let sayT = 0;
-function say(msg, ms = 3200) { const h = $('hint'); h.textContent = msg; h.classList.add('show'); clearTimeout(sayT); sayT = setTimeout(() => h.classList.remove('show'), ms); }
+function say(msg, ms = 2600) { const h = $('hint'); h.textContent = msg; h.classList.add('fast', 'show'); clearTimeout(sayT); sayT = setTimeout(() => { h.classList.remove('show'); setTimeout(() => h.classList.remove('fast'), 300); }, ms); }
 const modeLabel = () => input.mode === 'auto' ? `auto (${input.touchUI ? 'touch' : 'keyboard + mouse'})` : input.mode === 'touch' ? 'touch' : 'keyboard + mouse';
 const waveLabel = () => weather.mode === 'auto' ? `auto (${weather.state})` : weather.mode;
 const timeLabel = () => daylight.mode === 'auto' ? `auto (${daylight.phase})` : daylight.mode;
@@ -101,7 +101,7 @@ let started = false;
 $('go').disabled = false; $('go').textContent = 'DIVE';
 $('go').addEventListener('click', () => {
   started = true; $('intro').classList.add('gone'); audio.start(); weather.start(); maybeSuggestFs();
-  setTimeout(() => { $('hint').textContent = input.touchUI ? 'steer gently — the sea is in no hurry' : 'steer gently — the sea is in no hurry'; $('hint').classList.add('show'); setTimeout(() => $('hint').classList.remove('show'), 7000); }, 2500);
+  setTimeout(() => { $('hint').textContent = input.touchUI ? 'steer gently — the sea is in no hurry' : 'steer gently — the sea is in no hurry'; $('hint').classList.add('show'); setTimeout(() => { if (!$('hint').classList.contains('fast')) $('hint').classList.remove('show'); }, 7000); }, 2500);
 });
 if (params.has('skip')) { started = true; $('intro').classList.add('gone'); }
 if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.has('skip')) weather.start();

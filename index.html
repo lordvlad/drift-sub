@@ -112,8 +112,9 @@
   @media (max-width: 640px) {  }
   #viewBar { flex-wrap: wrap; }
   #albumCap { opacity: .7; font-size: 12px; }
-  #hint { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); font-size: 13px; opacity: 0; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 6px #000a; letter-spacing: .05em; text-align: center; }
-  #hint.show { opacity: .75; }
+  #hint { z-index: 9; position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); font-size: 13px; opacity: 0; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 6px #000a; letter-spacing: .05em; text-align: center; }
+  #hint.show { opacity: .85; }
+  #hint.fast { transition: opacity .2s; }
   body.touch #hint { bottom: auto; top: 54px; }
 </style>
 </head>
