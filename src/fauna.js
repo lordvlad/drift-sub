@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { fishGeometry, sharkGeometry, whaleGeometry, squidGeometry, mantaGeometry, orcaGeometry, dolphinGeometry } from './creatures.js';
+import { fishGeometry, mantaGeometry, orcaGeometry, dolphinGeometry } from './creatures.js';
+import { sharkGeometry } from './models/shark.js';
+import { humpbackGeometry, blueWhaleGeometry } from './models/whale.js';
+import { squidGeometry, giantSquidGeometry } from './models/squid.js';
 import { makeCreatureMaterial } from './materials.js';
 import { FISH, SHARKS, WHALES, SQUID, GIANT_SQUID, MANTAS, ORCAS, DOLPHINS, pick, bandY, bodyTint } from './species.js';
 
@@ -241,13 +244,16 @@ class Big {
 }
 
 class Shark extends Big {
-  constructor(scene, geo) {
-    super(scene, geo, { mat: { amp: 0.075, freq: 5, wave: 5 }, firstDelay: () => R(6, 50), nextDelay: () => R(20, 80) });
+  /** geos: { [species id]: geometry } — each species has its own markings */
+  constructor(scene, geos) {
+    super(scene, Object.values(geos)[0], { mat: { amp: 0.075, freq: 5, wave: 5 }, firstDelay: () => R(6, 50), nextDelay: () => R(20, 80) });
+    this.geos = geos;
   }
   spawn(field, sub) {
     const a = Math.atan2(sub.fwd.x, sub.fwd.z) + R(-2.4, 2.4), d = R(100, 130);
     const px = sub.pos.x + Math.sin(a) * d, pz = sub.pos.z + Math.cos(a) * d, g = field.heightAt(px, pz);
     const sp = this.sp = pick(SHARKS, -g - 4);
+    this.mesh.geometry = this.geos[sp.id] || this.mesh.geometry;
     this.len = R(sp.len[0], sp.len[1]); this.mesh.scale.setScalar(this.len);
     bodyTint(sp, this.mat.color, 0.15);
     this.speed = R(2.6, 4); this.curious = Math.random() < 0.5; this.cur = this.curious ? R(25, 50) : 0; this.t = Math.random() * 50;
@@ -286,9 +292,10 @@ class Shark extends Big {
 }
 
 class Whale extends Big {
-  constructor(scene, geo) {
+  constructor(scene, geos) {
+    const geo = Object.values(geos)[0];
     super(scene, geo, { mat: { amp: 0.06, freq: 1.5, wave: 3, axis: [0, 1, 0] }, firstDelay: () => R(70, 140), nextDelay: () => R(200, 420) });
-    this.calf = null;
+    this.geos = geos;
     this.calfMesh = new THREE.Mesh(geo, makeCreatureMaterial({ amp: 0.08, freq: 2.2, wave: 3, axis: [0, 1, 0] }));
     this.calfMesh.frustumCulled = false; this.calfMesh.visible = false; this.calfMesh.rotation.order = 'YXZ';
     scene.add(this.calfMesh); this.calfPos = new THREE.Vector3(); this.hasCalf = false;
@@ -298,6 +305,7 @@ class Whale extends Big {
     this.pos.set(sub.pos.x + Math.sin(a) * d, 0, sub.pos.z + Math.cos(a) * d);
     const g0 = field.heightAt(this.pos.x, this.pos.z);
     const sp = this.sp = pick(WHALES, -g0 - 12);
+    this.mesh.geometry = this.calfMesh.geometry = this.geos[sp.id] || this.mesh.geometry;
     this.len = R(sp.len[0], sp.len[1]); this.mesh.scale.setScalar(this.len);
     bodyTint(sp, this.mat.color, 0.1); this.calfMesh.material.color.copy(this.mat.color).multiplyScalar(1.05);
     this.speed = R(2.4, 3.2); this.t = Math.random() * 50;
@@ -472,16 +480,16 @@ export class Fauna {
     this.cruisers = [
       new Cruiser(scene, mantaGeometry(), MANTAS, { kind: 'manta', shy: 1.2, burst: 6, acc: 2.5, mat: { amp: 0.11, freq: 1.4, wave: 2.5, mode: 'flap' }, first: () => R(30, 90), next: () => R(70, 160),
         speed: [1.6, 2.4], alt: [3, 14], margin: 2, clear: 0.12, turn: 1.2, bank: 1.6, exotic: 0.05 }),
-      new Cruiser(scene, qg, GIANT_SQUID, { kind: 'giantsquid', shy: 1.5, burst: 8, acc: 5, mat: { amp: 0.05, freq: 1.2, wave: 4 }, first: () => R(60, 160), next: () => R(160, 360),
+      new Cruiser(scene, giantSquidGeometry(), GIANT_SQUID, { kind: 'giantsquid', shy: 1.5, burst: 8, acc: 5, mat: { amp: 0.05, freq: 1.2, wave: 4 }, first: () => R(60, 160), next: () => R(160, 360),
         speed: [1.2, 2], alt: [3, 12], margin: 3, clear: 0.1, turn: 0.8, bank: 0.5, exotic: 0.05, pulse: true }),
     ];
     this.pods = [
       new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { kind: 'dolphin', shy: 0.8, burst: 11, acc: 6, first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
       new Pod(scene, orcaGeometry(), ORCAS, 6, { kind: 'orca', shy: 0.7, burst: 12, acc: 5, first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
     ];
-    const sg = sharkGeometry();
+    const sg = Object.fromEntries(SHARKS.map((s) => [s.id, sharkGeometry(s.id)]));
     this.sharks = [0, 1, 2].map(() => new Shark(scene, sg));
-    this.whale = new Whale(scene, whaleGeometry());
+    this.whale = new Whale(scene, { humpback: humpbackGeometry(), blue: blueWhaleGeometry() });
     this.threats = [{ x: 0, y: 0, z: 0, r: 8 }];
     this.whaleLevel = 0;
   }
@@ -529,16 +537,17 @@ export class Fauna {
   /** Sphere-vs-whale (and calf) collision: body approximated by a chain of spheres along its axis. Returns the strongest impact speed (relative to the whale), 0 if none. */
   collide(pos, vel, radius) {
     const w = this.whale; if (!w.active) return 0;
-    let best = this._bodyHit(w.pos, w.len, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius);
-    if (w.hasCalf && w.calfMesh.visible) best = Math.max(best, this._bodyHit(w.calfPos, w.len * 0.4, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius));
+    const girth = w.sp && w.sp.id === 'blue' ? 0.62 : 1;   // blue whales are much slimmer than humpbacks
+    let best = this._bodyHit(w.pos, w.len, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius, girth);
+    if (w.hasCalf && w.calfMesh.visible) best = Math.max(best, this._bodyHit(w.calfPos, w.len * 0.4, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius, girth));
     return best;
   }
-  _bodyHit(c, len, yaw, pitch, speed, pos, vel, radius) {
+  _bodyHit(c, len, yaw, pitch, speed, pos, vel, radius, girth = 1) {
     if (Math.abs(pos.x - c.x) > len || Math.abs(pos.z - c.z) > len || Math.abs(pos.y - c.y) > len) return 0;
     const cp = Math.cos(pitch), fx = Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = Math.cos(yaw) * cp;
     let best = 0;
     for (let i = 0; i < SPINE.length; i += 2) {
-      const z = SPINE[i] * len, r = SPINE[i + 1] * len + radius;
+      const z = SPINE[i] * len, r = SPINE[i + 1] * len * girth + radius;
       const sx = c.x + fx * z, sy = c.y + fy * z, sz = c.z + fz * z;
       const ox = pos.x - sx, oy = pos.y - sy, oz = pos.z - sz, d2 = ox * ox + oy * oy + oz * oz;
       if (d2 >= r * r) continue;
