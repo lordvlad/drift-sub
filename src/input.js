@@ -12,7 +12,7 @@ export class Input {
     this.setMode('auto');
   }
   get thrust() { return clamp((this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0) - (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) + (this.touchUI ? this.joy.y : 0), -1, 1); }
-  get turn() { return clamp((this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0) + (this.touchUI ? this.joy.x : 0), -1, 1); }
+  get turn() { return clamp((this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0), -1, 1); }
   get rise() { return (this.keys.has('Space') || this.keys.has('KeyE') || this.btnUp ? 1 : 0) - (this.keys.has('KeyC') || this.keys.has('KeyQ') || this.btnDown ? 1 : 0); }
   takeLookX() { const v = this.lookX; this.lookX = 0; return v; }
   takeLookY() { const v = this.lookY; this.lookY = 0; return v; }
@@ -54,7 +54,7 @@ export class Input {
     let joyId = null, lookId = null, jc = { x: 0, y: 0 }, lp = { x: 0, y: 0 };
     const RMAX = 55;
     const setJoy = (e) => {
-      let dx = e.clientX - jc.x, dy = e.clientY - jc.y; const l = Math.hypot(dx, dy);
+      let dx = 0, dy = e.clientY - jc.y; const l = Math.hypot(dx, dy);
       if (l > RMAX) { dx *= RMAX / l; dy *= RMAX / l; }
       knob.style.transform = `translate(${dx}px,${dy}px)`;
       const dz = 0.1, fx = dx / RMAX, fy = -dy / RMAX;
