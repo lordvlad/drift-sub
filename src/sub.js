@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bus } from './bus.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -29,6 +30,7 @@ export class Sub {
     this.hitCool = 0.35;
     this.damage = Math.min(1, this.damage + 0.03 * Math.pow(spd - 0.4, 1.3) * k * this.stats.fragility);
     this.hitSev = clamp(spd * k / 5, 0.1, 1); this.hurtFlash = Math.max(this.hurtFlash, 0.4 + this.hitSev * 0.6); this.hitCount++;
+    bus.emit('hit', { speed: spd, k });
   }
   /** 0.15 (flat sand) .. 1 (rock): mirrors the seabed colouring, steep or rock-zone ground is hard */
   groundHardness(n, field) {

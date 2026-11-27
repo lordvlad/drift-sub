@@ -18,6 +18,8 @@ import { scorePhoto } from './photo.js';
 import { drawCracks } from './cracks.js';
 import { ib, svg } from './icons.js';
 import { Bestiary } from './bestiary.js';
+import { bus } from './bus.js';
+import { FEATURES } from './features.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -228,7 +230,8 @@ async function finishSnapshot({ buf, w, h, meta, score, damage }) {
     const c = document.createElement('canvas'); c.width = 320; c.height = 240; c.getContext('2d').drawImage(cv, sx, sy, cw, ch, 0, 0, 320, 240);
     return c.toDataURL('image/jpeg', 0.78);
   } })));
-  try { await store.add({ t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species }); const n = (await store.list()).length; albumIcon(n); toast(fresh.length ? `New bestiary page: ${fresh.join(', ')}` : `Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
+  try { const rec = { t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species, shot: score.shot };
+    await store.add(rec); bus.emit('snapshot', { rec, shot: score.shot, score, zoom: lastShot ? lastShot.zoom : 1 }); const n = (await store.list()).length; albumIcon(n); toast(fresh.length ? `New bestiary page: ${fresh.join(', ')}` : `Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
   catch { toast('Could not save snapshot (storage full?)'); }
 }
 
@@ -321,6 +324,7 @@ function swapSub(id) {
   fleet.switchTo(id);   // moves hull damage to the new sub, then applyFleet() applies its stats
   lampLevel = 0;
   note(`sub: ${to.name}`);
+  bus.emit('swap', { id });
   return true;
 }
 fleet.onChange(applyFleet);
@@ -407,10 +411,17 @@ function frame(now) {
   if (vf) { const q = Math.round(sub.damage * 100) + ':' + innerWidth + 'x' + innerHeight; if (q !== crackKey) { crackKey = q; const c = $('vfCracks'); c.width = innerWidth; c.height = innerHeight; drawCracks(c.getContext('2d'), c.width, c.height, sub.damage); } }
   if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}${zoom > 1 ? ` · ${zoom}×` : ''}`; }
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
+  bus.emit('frame', { dt, t });
+  for (const f of FEATURES) if (f.update) f.update(dt, game);
   renderer.render(scene, camera);
 }
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
+// plug-in features (src/features.js) get the whole game state
+const game = { THREE, scene, camera, renderer, canvas, field, terrain, fauna, sub, fleet, wallet, album, store, bestiary, daylight, weather, audio, input,
+  bubbles, snow, shafts, surface, say, toast, bus, params, get subModel() { return subModel; }, get viewfinder() { return vf; }, get zoom() { return zoom; } };
+window.__game = game;
+for (const f of FEATURES) f.init(game);
 requestAnimationFrame((n) => { last = n; frame(n); });
 window.__sim = {
   bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed,

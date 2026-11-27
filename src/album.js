@@ -1,4 +1,5 @@
 import { ib } from './icons.js';
+import { bus } from './bus.js';
 
 const DB = 'drift-album', ST = 'shots';
 export const MAX_SHOTS = 100;
@@ -129,6 +130,7 @@ export class AlbumUI {
     const next = Math.min(this.cur, this.items.length - 2);
     await this.refresh(); next >= 0 ? this.show(next) : this.closeViewer();
     this.say(`Sold for ◎ ${v} · ${this.wallet.n} pearls`);
+    bus.emit('sold', { rec, price: v });
   }
   async del() {
     const rec = this.items[this.cur]; if (!rec) return;

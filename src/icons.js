@@ -31,6 +31,8 @@ const P = {
   swap: 'M4 8h13 M13 4l4 4-4 4 M20 16H7 M11 12l-4 4 4 4',
   zoom: 'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z M15.5 15.5L21 21 M10.5 7.5v6 M7.5 10.5h6',
 };
+/** Plug-in icons: registerIcons({ name: 'svg path d' }) (24x24 stroke icons). */
+export const registerIcons = (map) => Object.assign(P, map);
 export const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name]}"/></svg>`;
 
 export function ib(el, name, title) {
