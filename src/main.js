@@ -87,11 +87,25 @@ $('tools').addEventListener('pointerdown', (e) => e.stopPropagation());
 let started = false;
 $('go').disabled = false; $('go').textContent = 'DIVE';
 $('go').addEventListener('click', () => {
-  started = true; $('intro').classList.add('gone'); audio.start(); weather.start();
+  started = true; $('intro').classList.add('gone'); audio.start(); weather.start(); maybeSuggestFs();
   setTimeout(() => { $('hint').textContent = input.touchUI ? 'steer gently — the sea is in no hurry' : 'steer gently — the sea is in no hurry'; $('hint').classList.add('show'); setTimeout(() => $('hint').classList.remove('show'), 7000); }, 2500);
 });
 if (params.has('skip')) { started = true; $('intro').classList.add('gone'); }
 if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.has('skip')) weather.start();
+
+// ---------- fullscreen suggestion ----------
+const fsEl = document.documentElement, fsOK = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+const inFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const fsBanner = $('fsBanner');
+function maybeSuggestFs() {
+  if (!fsOK || inFs() || localStorage.getItem('drift-fs-dismissed')) return;
+  setTimeout(() => { if (!inFs()) fsBanner.hidden = false; }, 4000);
+  setTimeout(() => { fsBanner.hidden = true; }, 24000);
+}
+$('fsGo').addEventListener('click', () => { (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl).catch(() => {}); fsBanner.hidden = true; });
+$('fsX').addEventListener('click', () => { fsBanner.hidden = true; try { localStorage.setItem('drift-fs-dismissed', '1'); } catch {} });
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { if (inFs()) fsBanner.hidden = true; });
+fsBanner.addEventListener('pointerdown', (e) => e.stopPropagation());
 
 // ---------- camera rig ----------
 const cam = { yaw: sub.yaw, pitch: 0, pos: new THREE.Vector3(), look: new THREE.Vector3() };
