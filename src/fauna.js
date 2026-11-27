@@ -10,6 +10,20 @@ export function alarm(sub, x, y, z, sens = 1) {
   const r = (3 + Math.pow(sub.speed, 1.4) * 3.2) * sens, d = Math.hypot(x - sub.pos.x, y - sub.pos.y, z - sub.pos.z);
   return d < r ? 1 - d / r : 0;
 }
+/**
+ * Flexible swim speed: cruise when calm, sprint toward `burst` when scared. Speed changes with finite acceleration
+ * (fast up, gentle coast down) and sprinting drains stamina, so a chase ends with the animal tiring back to cruise.
+ * Returns the current speed (m/s) and stores it in obj.v.
+ */
+export function swim(obj, dt, cruise, burst, acc) {
+  if (obj.v === undefined) { obj.v = cruise; obj.stam = 1; }
+  const want = cruise + (burst - cruise) * Math.pow(obj.fear || 0, 0.7) * (0.25 + 0.75 * obj.stam);
+  const dv = want - obj.v;
+  obj.v += dv > 0 ? Math.min(dv, acc * dt) : Math.max(dv, -acc * 0.35 * dt);
+  const sprint = clamp((obj.v - cruise * 1.25) / Math.max(0.1, burst - cruise), 0, 1);
+  obj.stam = clamp(obj.stam - sprint * 0.11 * dt + (sprint === 0 ? 0.06 * dt : 0), 0, 1);
+  return obj.v;
+}
 /** Activity by time of day: >1 means seen more often. */
 const ACTIVITY = {
   shark:      { night: 1.8, dawn: 1.6, morning: 1, day: 0.7, evening: 1.6 },
@@ -205,7 +219,7 @@ class Big {
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.set(-this.pitch, this.yaw, this.roll);
   }
-  despawn() { this.active = false; this.mesh.visible = false; this.timer = this.opts.nextDelay(); this.fear = 0; }
+  despawn() { this.active = false; this.mesh.visible = false; this.timer = this.opts.nextDelay(); this.fear = 0; this.v = undefined; }
   bandY(y, ground, margin) { return bandY(this.sp, y, ground, margin); }
   /** smoothed fear of the sub; returns the bearing pointing away from it */
   scare(sub, dt, sens) {
@@ -259,9 +273,9 @@ class Shark extends Big {
     const gA = this.aheadGround(field, ax, az, [6, 12, 22, 34]);
     const wantY = this.bandY(Math.max(gA + 8 + Math.sin(t * 0.05) * 6, gA + 4), gA, 4);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.5);
-    this.pitch += (clamp(dy / this.speed, -0.4, 0.7) - this.pitch) * (1 - Math.exp(-dt * 1.6));
+    const spd = swim(this, dt, this.speed, 11, 7);   // reef sharks sprint to ~11 m/s in about 1.5 s
+    this.pitch += (clamp(dy / Math.max(1, spd), -0.4, 0.7) - this.pitch) * (1 - Math.exp(-dt * 1.6));
     const cp = Math.cos(this.pitch);
-    const spd = this.speed * (1 + this.fear * 1.4);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.2 + 0.6);
     this.roll += (-this.yawRate * 1.3 - this.roll) * (1 - Math.exp(-dt * 2));
@@ -306,9 +320,9 @@ class Whale extends Big {
     const gA = this.aheadGround(field, ax, az, [15, 30, 50, 80]);
     const wantY = this.bandY(Math.max(gA + 14, this.pos.y + Math.sin(t * 0.08) * 2), gA, 12);
     const dy = clamp((wantY - this.pos.y) * 0.12, -0.8, 1.4);
-    this.pitch += (clamp(dy / this.speed, -0.2, 0.35) + Math.sin(t * 0.25) * 0.04 - this.pitch) * (1 - Math.exp(-dt * 0.9));
+    const spd = swim(this, dt, this.speed, this.speed * 1.5, 0.35);   // whales cannot outrun the sub, they just lumber away
+    this.pitch += (clamp(dy / Math.max(1, spd), -0.2, 0.35) + Math.sin(t * 0.25) * 0.04 - this.pitch) * (1 - Math.exp(-dt * 0.9));
     const cp = Math.cos(this.pitch);
-    const spd = this.speed * (1 + this.fear * 0.35);   // whales cannot outrun the sub, they just lumber away
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.18 + 1);
     this.roll = Math.sin(t * 0.2) * 0.05;
@@ -355,7 +369,7 @@ class Cruiser extends Big {
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw), L = this.len;
     const gA = this.aheadGround(field, ax, az, [L * 0.5, L, L * 2, L * 3]);
     const wantY = this.bandY(Math.max(gA + o.alt[0] + (o.alt[1] - o.alt[0]) * (0.5 + 0.5 * Math.sin(t * 0.05)), gA + o.margin), gA, o.margin);
-    const sp = (o.pulse ? this.speed * (0.45 + 1.1 * Math.pow(Math.max(0, Math.sin(t * 1.3)), 2)) : this.speed) * (1 + this.fear * o.flee);
+    const v = swim(this, dt, this.speed, o.burst, o.acc), sp = o.pulse ? v * (0.45 + 1.1 * Math.pow(Math.max(0, Math.sin(t * (1.3 + this.fear * 1.5))), 2)) : v;
     const dy = clamp((wantY - this.pos.y) * 0.2, -1, 2);
     this.pitch += (clamp(dy / Math.max(0.5, sp), -0.35, 0.6) - this.pitch) * (1 - Math.exp(-dt * 1.4));
     const cp = Math.cos(this.pitch);
@@ -417,11 +431,12 @@ class Pod {
     for (const k of [1, 2, 4, 6]) gA = Math.max(gA, field.heightAt(this.pos.x + ax * L * k, this.pos.z + az * L * k));
     const wantY = this.bandY(Math.max(gA + o.alt[0] + (o.alt[1] - o.alt[0]) * (0.5 + 0.5 * Math.sin(t * 0.06)), gA + L * 0.8), gA);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.2);
-    this.pitch += (clamp(dy / this.speed, -0.35, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.4));
+    const spd = swim(this, dt, this.speed, o.burst, o.acc);
+    this.mat.userData.u.uFreq.value = 1.5 + spd * 0.5;
+    this.pitch += (clamp(dy / Math.max(1, spd), -0.35, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.4));
     const cp = Math.cos(this.pitch);
-    const spd = this.speed * (1 + this.fear * 0.9);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
-    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw), k = 1 - Math.exp(-dt * 1.6), arr = this.mesh.instanceMatrix.array;
+    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw), k = 1 - Math.exp(-dt * (1.6 + spd * 0.35)), arr = this.mesh.instanceMatrix.array;
     for (let i = 0; i < this.n; i++) {
       const j = i * 3, ox = this.OFF[j], oy = this.OFF[j + 1], oz = this.OFF[j + 2];
       const bob = Math.sin(t * o.bob + this.PH[i]) * L * 0.22;
@@ -441,7 +456,7 @@ class Pod {
     this.mesh.instanceMatrix.needsUpdate = true;
     if (Math.hypot(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z) > 220) this.despawn();
   }
-  despawn() { this.active = false; this.mesh.count = 0; this.timer = this.o.next(); this.fear = 0; }
+  despawn() { this.active = false; this.mesh.count = 0; this.timer = this.o.next(); this.fear = 0; this.v = undefined; }
 }
 
 export class Fauna {
@@ -455,14 +470,14 @@ export class Fauna {
     const qg = squidGeometry();
     for (let i = 0; i < 2; i++) this.swarms.push(new Swarm(scene, qg, SQUID));
     this.cruisers = [
-      new Cruiser(scene, mantaGeometry(), MANTAS, { kind: 'manta', shy: 1.2, flee: 1.2, mat: { amp: 0.11, freq: 1.4, wave: 2.5, mode: 'flap' }, first: () => R(30, 90), next: () => R(70, 160),
+      new Cruiser(scene, mantaGeometry(), MANTAS, { kind: 'manta', shy: 1.2, burst: 6, acc: 2.5, mat: { amp: 0.11, freq: 1.4, wave: 2.5, mode: 'flap' }, first: () => R(30, 90), next: () => R(70, 160),
         speed: [1.6, 2.4], alt: [3, 14], margin: 2, clear: 0.12, turn: 1.2, bank: 1.6, exotic: 0.05 }),
-      new Cruiser(scene, qg, GIANT_SQUID, { kind: 'giantsquid', shy: 1.5, flee: 1.6, mat: { amp: 0.05, freq: 1.2, wave: 4 }, first: () => R(60, 160), next: () => R(160, 360),
+      new Cruiser(scene, qg, GIANT_SQUID, { kind: 'giantsquid', shy: 1.5, burst: 8, acc: 5, mat: { amp: 0.05, freq: 1.2, wave: 4 }, first: () => R(60, 160), next: () => R(160, 360),
         speed: [1.2, 2], alt: [3, 12], margin: 3, clear: 0.1, turn: 0.8, bank: 0.5, exotic: 0.05, pulse: true }),
     ];
     this.pods = [
-      new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { kind: 'dolphin', shy: 0.8, first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
-      new Pod(scene, orcaGeometry(), ORCAS, 6, { kind: 'orca', shy: 0.7, first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
+      new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { kind: 'dolphin', shy: 0.8, burst: 11, acc: 6, first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
+      new Pod(scene, orcaGeometry(), ORCAS, 6, { kind: 'orca', shy: 0.7, burst: 12, acc: 5, first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
     ];
     const sg = sharkGeometry();
     this.sharks = [0, 1, 2].map(() => new Shark(scene, sg));
@@ -514,8 +529,8 @@ export class Fauna {
   /** Sphere-vs-whale (and calf) collision: body approximated by a chain of spheres along its axis. Returns the strongest impact speed (relative to the whale), 0 if none. */
   collide(pos, vel, radius) {
     const w = this.whale; if (!w.active) return 0;
-    let best = this._bodyHit(w.pos, w.len, w.yaw, w.pitch, w.speed, pos, vel, radius);
-    if (w.hasCalf && w.calfMesh.visible) best = Math.max(best, this._bodyHit(w.calfPos, w.len * 0.4, w.yaw, w.pitch, w.speed, pos, vel, radius));
+    let best = this._bodyHit(w.pos, w.len, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius);
+    if (w.hasCalf && w.calfMesh.visible) best = Math.max(best, this._bodyHit(w.calfPos, w.len * 0.4, w.yaw, w.pitch, w.v ?? w.speed, pos, vel, radius));
     return best;
   }
   _bodyHit(c, len, yaw, pitch, speed, pos, vel, radius) {
