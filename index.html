@@ -92,7 +92,7 @@
   #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 8; }
   #flash.go { animation: flash .45s ease-out; }
   @keyframes flash { from { opacity: .75; } to { opacity: 0; } }
-  #toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); padding: 7px 16px; font-size: 13px; background: #0b2f44dd; border: 1px solid #9fe3ff44; border-radius: 999px; opacity: 0; transition: opacity .4s; pointer-events: none; z-index: 8; }
+  #toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); padding: 7px 16px; font-size: 13px; background: #0b2f44dd; border: 1px solid #9fe3ff44; border-radius: 999px; opacity: 0; transition: opacity .4s; pointer-events: none; z-index: 30; }
   #toast.show { opacity: 1; }
   #album { position: fixed; inset: 0; z-index: 20; background: #031420ee; backdrop-filter: blur(8px); display: flex; flex-direction: column; touch-action: auto; }
   #album[hidden], #albumView[hidden] { display: none; }
