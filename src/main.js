@@ -74,19 +74,25 @@ function setIntroText(touch) {
     ? 'Left lever: thrust forward &amp; reverse.<br>Drag anywhere else to steer left, right, up, down.<br>▲ ▼ rise and dive. Nothing to find, nowhere to be.'
     : '<kbd>W</kbd> <kbd>S</kbd> thrust &nbsp; <kbd>A</kbd> <kbd>D</kbd> turn &nbsp; mouse to steer<br><kbd>Space</kbd> rise &nbsp; <kbd>C</kbd> dive &nbsp; <kbd>Shift</kbd> burst &nbsp; <kbd>F</kbd> lamps &nbsp; <kbd>P</kbd> camera<br>Click to capture the mouse. Esc releases it. Nothing to find, nowhere to be.';
 }
-$('modeBtn').addEventListener('click', (e) => { input.cycleMode(); e.currentTarget.blur(); });
+$('modeBtn').addEventListener('click', (e) => { const a = modeLabel(); input.cycleMode(); say(`Controls: ${a} → ${modeLabel()}`); e.currentTarget.blur(); });
+// toggle feedback goes to the same quiet line as the other calming notes
+let sayT = 0;
+function say(msg, ms = 3200) { const h = $('hint'); h.textContent = msg; h.classList.add('show'); clearTimeout(sayT); sayT = setTimeout(() => h.classList.remove('show'), ms); }
+const modeLabel = () => input.mode === 'auto' ? `auto (${input.touchUI ? 'touch' : 'keyboard + mouse'})` : input.mode === 'touch' ? 'touch' : 'keyboard + mouse';
+const waveLabel = () => weather.mode === 'auto' ? `auto (${weather.state})` : weather.mode;
+const timeLabel = () => daylight.mode === 'auto' ? `auto (${daylight.phase})` : daylight.mode;
 const soundIcon = () => ib($('soundBtn'), audio.muted ? 'soundOff' : 'soundOn', 'Sound: ' + (audio.muted ? 'off' : 'on'));
 soundIcon();
-$('soundBtn').addEventListener('click', (e) => { audio.setMuted(!audio.muted); e.target.textContent = 'Sound: ' + (audio.muted ? 'off' : 'on'); e.currentTarget.blur(); });
-$('waveBtn').addEventListener('click', (e) => { weather.cycle(); e.currentTarget.blur(); });
+$('soundBtn').addEventListener('click', (e) => { const a = audio.muted ? 'off' : 'on'; audio.setMuted(!audio.muted); soundIcon(); say(`Sound: ${a} → ${audio.muted ? 'off' : 'on'}`); e.currentTarget.blur(); });
+$('waveBtn').addEventListener('click', (e) => { const a = waveLabel(); weather.cycle(); say(`Waves: ${a} → ${waveLabel()}`); e.currentTarget.blur(); });
 weather.onChange();
 const daylight = new Daylight(() => { const ph = daylight.phase; ib($('timeBtn'), { night: 'moon', dawn: 'sunrise', morning: 'sunrise', day: 'sun', evening: 'sunset' }[ph], daylight.mode === 'auto' ? `Time: auto (${ph}, your clock). Click to override` : `Time: ${daylight.mode}. Click to change`, { auto: daylight.mode === 'auto' }); });
 daylight.onChange();
 const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
 const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`, { auto: lampMode === 'auto' }); };
-const cycleLamps = () => { lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); };
+const cycleLamps = () => { const a = lampMode; lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); say(`Lamps: ${a} → ${lampMode}`); };
 lampLabel();
-$('timeBtn').addEventListener('click', (e) => { daylight.cycle(); e.currentTarget.blur(); });
+$('timeBtn').addEventListener('click', (e) => { const a = timeLabel(); daylight.cycle(); say(`Time: ${a} → ${timeLabel()}`); e.currentTarget.blur(); });
 $('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
 addEventListener('keydown', (e) => { if (e.code === 'KeyF' && !e.repeat) cycleLamps(); });
 $('tools').addEventListener('pointerdown', (e) => e.stopPropagation());
