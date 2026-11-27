@@ -260,7 +260,9 @@ function frame(now) {
   // camera: lags the sub's heading, pulls back with speed
   cam.yaw = angLerp(cam.yaw, sub.yaw, 1 - Math.exp(-dt * 2.2));
   cam.pitch += (sub.pitch * 0.55 - cam.pitch) * (1 - Math.exp(-dt * 2));
-  const dist = 5.6 + sub.speed * 0.22, cp = Math.cos(cam.pitch);
+  // portrait screens see far less sideways, so pull the camera back to keep the sub (and its surroundings) framed
+  const portrait = camera.aspect < 1 ? Math.pow(1 / camera.aspect, 0.7) : 1;
+  const dist = (5.6 + sub.speed * 0.22) * portrait, cp = Math.cos(cam.pitch);
   camDesired.set(sub.pos.x - Math.sin(cam.yaw) * cp * dist, sub.pos.y + Math.sin(cam.pitch) * dist + 1.5, sub.pos.z - Math.cos(cam.yaw) * cp * dist);
   cam.pos.lerp(camDesired, 1 - Math.exp(-dt * 5));
   const gh = field.heightAt(cam.pos.x, cam.pos.z) + 1.0;
