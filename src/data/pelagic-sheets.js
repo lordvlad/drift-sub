@@ -3,6 +3,15 @@
  * `wiki` is the English Wikipedia page title (checked against the REST summary API); same shape as src/bestiary-data.js.
  */
 export const PELAGIC_SHEETS = {
+  moonfish: {
+    sci: 'Lampris guttatus', wiki: 'Opah',
+    text: [
+      'The moonfish, better known as the opah, is a round, laterally flattened fish the size of a car tyre, painted crimson with silver-white spots and red fins. It lives out in the open blue, usually below the sunlit layer, hanging at depth and drifting with the currents.',
+      'Unlike most fishes it does not swim with its tail: it rows itself along with its long, sickle-shaped pectoral fins, flapping them constantly so that it seems to fly through the water. Its tiny toothless mouth snaps up squid, krill and small fishes.',
+      'It is solitary and shy of divers, and seen only rarely, which makes a clear photograph of one a prize.',
+    ],
+    fun: 'The opah is the first fish known to be fully warm-blooded: heat from its flapping fins is trapped by a network of blood vessels in the gills, keeping its heart and muscles warm in cold deep water.',
+  },
   yellowfin: {
     sci: 'Thunnus albacares', wiki: 'Yellowfin tuna',
     text: [

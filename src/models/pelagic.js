@@ -536,3 +536,38 @@ export function denRockGeometry({ seed = 0 } = {}) {
 
 export const tunaGeometry = school(buildTuna), mahiGeometry = school(buildMahi), barracudaGeometry = school(buildBarracuda), bannerfishGeometry = school(buildBannerfish), hammerheadGeometry = school(buildHammerhead);
 export { triCount };
+
+
+// ===================================================== MOONFISH / OPAH (single) =====================================================
+const MOON = [
+  [0.5, 0.004, 0.01, 0.01, -0.03], [0.47, 0.03, 0.085, 0.085, -0.03], [0.4, 0.062, 0.2, 0.2, -0.01], [0.28, 0.085, 0.33, 0.32, 0],
+  [0.1, 0.09, 0.43, 0.42, 0], [-0.08, 0.082, 0.43, 0.42, 0], [-0.24, 0.062, 0.33, 0.32, 0], [-0.37, 0.038, 0.18, 0.17, 0], [-0.46, 0.022, 0.05, 0.05, 0],
+];
+export function moonfishGeometry({ rings = 36, sides = 22 } = {}) {
+  const T = surfaceTools(MOON), crim = C(0xea4262), slate = C(0x4a6f8f), pink = C(0xe7889a), dk = C(0x14151c);
+  const body = loft(MOON, {
+    rings, sides, back: 0x4a6f8f, belly: 0xe7889a,
+    colorFn: (c, { z, s, co }) => {
+      c.lerp(crim, 0.45 + 0.4 * smooth(0.5, -0.2, s));                       // silver-blue back washing into crimson flanks
+      c.lerp(slate, 0.55 * smooth(0.55, 0.95, s));
+      c.lerp(pink, 0.5 * smooth(-0.1, -0.8, s));
+      const sp = hash(Math.floor(z * 46), Math.floor(co * 8 + s * 9 + 30));   // white spots over the flanks
+      c.lerp(C(0xf4f1ea), 0.85 * smooth(0.8, 0.88, sp) * smooth(0.8, 0.3, Math.abs(s)));
+    },
+  });
+  const parts = [body];
+  eyes(parts, T, 0.4, 0.2, 0.03, 0xe6c24a, 0.99);                           // big gold-ringed eye
+  skinLine(parts, T, [[0.485, -0.07], [0.46, -0.075], [0.43, -0.06]], 0.004, 0x5b0f1e, 0.998);   // small toothless mouth
+  const red = 0xd23a45;
+  const dors = [[0.18, 0.43, 0.62, 0.012], [0.12, 0.43, 0.7, 0.012], [0.04, 0.43, 0.5, 0.01], [-0.06, 0.43, 0.46, 0.008], [-0.16, 0.36, 0.38, 0.006]];
+  parts.push(fin(strip(dors), { side: [1, 0, 0], span: 6, chord: 5, color: red }));          // tall sail-like dorsal lobe
+  const anal = [[0.08, -0.42, -0.5, 0.01], [0.0, -0.42, -0.5, 0.01], [-0.1, -0.38, -0.42, 0.007], [-0.2, -0.3, -0.32, 0.005]];
+  parts.push(fin(strip(anal), { side: [1, 0, 0], span: 5, chord: 4, color: red }));
+  parts.push(fin(lunate({ z0: -0.46, half: 0.2, sweep: 0.1, c0: 0.05, cT: 0.13, pow: 1.4 }), { side: [1, 0, 0], span: 9, chord: 5, color: red }));   // forked tail
+  const pecR = fin(pfin([[0.08, -0.05, 0.12, 0.06, 0.016], [0.22, -0.08, 0.1, 0.0, 0.012], [0.36, -0.12, 0.02, -0.1, 0.008], [0.46, -0.14, -0.06, -0.2, 0.005]]),
+    { side: [0.2, 1, 0], span: 4, chord: 6, color: red });                                       // long sickle pectorals: the fish "flies" with them
+  parts.push(pecR, mirrorX(pecR));
+  const pelR = fin(pfin([[0.04, -0.3, 0.02, -0.04, 0.012], [0.07, -0.4, -0.02, -0.12, 0.008], [0.09, -0.46, -0.05, -0.16, 0.005]]), { side: [0.5, 1, 0], span: 3, chord: 5, color: red });
+  parts.push(pelR, mirrorX(pelR));
+  return merged(parts);
+}

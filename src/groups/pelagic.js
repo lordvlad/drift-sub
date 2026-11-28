@@ -55,13 +55,15 @@ export const PELAGIC = [
   { id: 'octopus', name: 'Common octopus', hab: 'cave', cls: 'octopus', bottom: true, min: 3, max: 50, value: 70, weight: 1.3, len: [0.8, 1.3], second: true,
     aff: { reef: 0.5, rock: 0.7, cave: 1, wreck: 0.8, bigreef: 0.6 }, thresh: 0.3,
     mat: { amp: 0.035, freq: 2, wave: 6 }, act: { night: 1.6, dawn: 1.4, morning: 0.8, day: 0.7, evening: 1.4 } },
+  { id: 'moonfish', name: 'Moonfish', hab: 'open', cls: 'moonfish', min: 24, max: 60, value: 160, rare: true, weight: 0.7, len: [0.9, 1.5],
+    aff: { open: 1, deep: 0.8, trench: 0.4 }, thresh: 0.5, mat: { mode: 'flap', amp: 0.1, freq: 2.5, wave: 2 }, act: { night: 1.4, dawn: 1.1, morning: 0.8, day: 0.8, evening: 1.2 } },
   { id: 'bannerfish', name: 'Pennant coralfish', hab: 'cave', cls: 'school', min: 3, max: 40, value: 14, weight: 2, len: [0.2, 0.28], count: [6, 22], second: true,
     aff: { reef: 0.8, bigreef: 1, wreck: 0.6, cave: 0.9, rock: 0.3 }, thresh: 0.3, near: ['cave', 'arch', 'garden', 'bigreef', 'wreck'], nearChance: 0.5,
     mode: 'mill', cruise: [0.3, 0.7], burst: 3, acc: 4, shy: 0.8, depth: [1.2, 4], shape: [1, 0.7, 1], r0: 1.2, rk: 1.1, rmax: 5,
     mat: { amp: 0.06, freq: 9, wave: 7 }, act: { night: 0.3, dawn: 0.9, morning: 1.3, day: 1.4, evening: 0.9 } },
 ];
 // the vertex colours are authored for the model preview; the sea is darker, so each species gets a small brightness gain
-const GAIN = { yellowfin: 1.2, mahi: 1.3, gbarracuda: 1.35, hammerhead: 1.2, bannerfish: 1.1, sailfish: 1.2, moray: 1.3, goliath: 1.4, hawksbill: 1.2 };
+const GAIN = { yellowfin: 1.2, mahi: 1.3, gbarracuda: 1.35, hammerhead: 1.2, bannerfish: 1.1, sailfish: 1.2, moray: 1.3, goliath: 1.4, hawksbill: 1.2, moonfish: 1.7 };
 registerSpecies(PELAGIC);
 registerSheets(PELAGIC_SHEETS);
 
@@ -376,6 +378,39 @@ class Grouper extends Animal {
   collide(pos, vel, r) { return this.hit([[0.36, 0.12], [0.12, 0.15], [-0.12, 0.13], [-0.36, 0.06]], this.v ?? 0.2, pos, vel, r); }
 }
 
+/** Moonfish (opah): a deep, round, slow disc that hangs in the blue and rows itself along with its pectoral fins; flees in a short sprint. */
+class Moonfish extends Animal {
+  spawn(spot, sub, ctx) {
+    const sp = this.sp; this.len = R(sp.len[0], sp.len[1]); this.mesh.scale.setScalar(this.len);
+    this.t = Math.random() * 50; this.v = undefined; this.cruise = R(0.45, 0.8); this.depth = R(28, 52);
+    this.pos.set(spot.x, BAND(sp, -this.depth, spot.g, this.len * 0.6 + 2), spot.z);
+    this.yaw = Math.atan2(sub.pos.x - spot.x, sub.pos.z - spot.z) + R(-1.2, 1.2); this.pitch = 0; this.roll = 0; this.yawRate = 0;
+    this.active = true; this.mesh.visible = true; this.place();
+  }
+  update(dt, sub, ctx) {
+    this.t += dt; const t = this.t, field = ctx.field, sp = this.sp, L = this.len;
+    const away = this.scare(sub, dt, 0.85);
+    let want = this.yaw + (0.12 * Math.sin(t * 0.13) + 0.08 * Math.sin(t * 0.31 + 1)) * 3;
+    if (this.fs > 0.08) want = away;
+    const spd = swim(this, dt, this.cruise, 4.2, 2.2);
+    this.yawRate += (clamp(angDiff(this.yaw, want), -1, 1) * (0.28 + this.fs * 0.8) - this.yawRate) * (1 - Math.exp(-dt * 1.0));
+    this.yaw += this.yawRate * dt;
+    const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
+    const gA = this.ahead(field, ax, az, [L * 2, L * 4, 14, 26]);
+    const wantY = BAND(sp, Math.max(-(this.depth + 5 * Math.sin(t * 0.04)), gA + L * 0.7 + 3), gA, L * 0.6 + 2);
+    this.pitch += (clamp((wantY - this.pos.y) * 0.18 / Math.max(0.5, spd), -0.4, 0.5) - this.pitch) * (1 - Math.exp(-dt * 1.4));
+    const cp = Math.cos(this.pitch);
+    this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
+    this.ground(field, L * 0.45 + 0.6);
+    this.roll += (-this.yawRate * 0.6 - this.roll) * (1 - Math.exp(-dt * 2));
+    this.mat.userData.u.uFreq.value = Math.min(5, 2 + spd * 1.1);
+    this.place();
+    if (this.distTo(sub) > 200) this.despawn();
+  }
+  threat(push) { if (this.active) push({ x: this.pos.x, y: this.pos.y, z: this.pos.z, r: 4 }); }
+  collide(pos, vel, r) { return this.hit([[0.2, 0.22], [-0.05, 0.26], [-0.28, 0.2]], this.v ?? 0.5, pos, vel, r); }
+}
+
 /** Hawksbill: glides over reefs and ledges, now and then swimming up for a breath at the shallowest edge of its band. */
 class Hawksbill extends Animal {
   spawn(spot, sub, ctx) {
@@ -589,9 +624,9 @@ class Octopus extends Animal {
 }
 
 // ───────────────────────────── the group ─────────────────────────────
-const CLASSES = { sailfish: Sailfish, goliath: Grouper, hawksbill: Hawksbill, moray: Moray, octopus: Octopus };
+const CLASSES = { moonfish: Moonfish, sailfish: Sailfish, goliath: Grouper, hawksbill: Hawksbill, moray: Moray, octopus: Octopus };
 const GEOS = { yellowfin: () => M.tunaGeometry(), mahi: () => M.mahiGeometry(), gbarracuda: () => M.barracudaGeometry(), hammerhead: () => M.hammerheadGeometry(), bannerfish: () => M.bannerfishGeometry(),
-  sailfish: () => M.sailfishGeometry(), moray: () => M.morayGeometry(), goliath: () => M.grouperGeometry(), hawksbill: () => M.hawksbillGeometry(), octopus: () => M.octopusGeometry() };
+  sailfish: () => M.sailfishGeometry(), moray: () => M.morayGeometry(), goliath: () => M.grouperGeometry(), hawksbill: () => M.hawksbillGeometry(), moonfish: () => M.moonfishGeometry(), octopus: () => M.octopusGeometry() };
 
 class PelagicGroup {
   constructor() { this.id = 'pelagic'; this.slots = []; this.schools = []; this.singles = []; this.fauna = null; this.frame = 0; }
