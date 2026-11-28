@@ -104,7 +104,8 @@ export function fin(stations, { side = [1, 0, 0], span = 10, chord = 8, color = 
     }
     parts.push(geometry(pos, col, idx, n.clone().multiplyScalar(up)));
   }
-  return mergeGeometries(parts, false);
+  const g = mergeGeometries(parts, false); g.userData.kind = 'fin'; g.userData.median = Math.abs(n.x) > 0.7;   // median fins (dorsal, anal, caudal) get anchored to the body
+  return g;
 }
 
 /**
@@ -156,8 +157,30 @@ export function mirrorX(g) {
   return m;
 }
 
+/**
+ * Anchor fins to the body: fin vertices that lie within `reach` of the body surface are pulled toward it and slightly into it
+ * (smoothly: full at <= `bury`), so a fin root that straddles a concave stretch of the back/belly can never float above the skin.
+ * Uses the nearest body vertex + its normal (cheap, no triangle tests). Mutates `fin` in place.
+ */
+export function anchorFin(fin, body, { reach = 0.055, bury = 0.014, sink = 0.014 } = {}) {
+  const bp = body.attributes.position.array, bn = body.attributes.normal ? body.attributes.normal.array : null; if (!bn) return;
+  const fp = fin.attributes.position, n = fp.count, bc = bp.length / 3;
+  for (let i = 0; i < n; i++) {
+    const x = fp.getX(i), y = fp.getY(i), z = fp.getZ(i); let best = 1e9, bi = -1;
+    for (let j = 0; j < bc; j++) { const dx = bp[j * 3] - x, dy = bp[j * 3 + 1] - y, dz = bp[j * 3 + 2] - z, d = dx * dx + dy * dy + dz * dz; if (d < best) { best = d; bi = j; } }
+    const d = Math.sqrt(best); if (d >= reach) continue;
+    const nx = bn[bi * 3], ny = bn[bi * 3 + 1], nz = bn[bi * 3 + 2];
+    if ((x - bp[bi * 3]) * nx + (y - bp[bi * 3 + 1]) * ny + (z - bp[bi * 3 + 2]) * nz < 0) continue;   // already inside the body
+    const t = Math.min(1, Math.max(0, (reach - d) / (reach - bury))), w = t * t * (3 - 2 * t);
+    fp.setXYZ(i, x + (bp[bi * 3] - nx * sink - x) * w, y + (bp[bi * 3 + 1] - ny * sink - y) * w, z + (bp[bi * 3 + 2] - nz * sink - z) * w);
+  }
+  fin.computeVertexNormals();
+}
+
 /** Merge parts into one indexed geometry (position, normal, color). */
 export function merge(parts) {
+  let body = parts[0]; for (const g of parts) if (g.attributes.position.count > body.attributes.position.count) body = g;
+  for (const g of parts) if (g !== body && g.userData && g.userData.kind === 'fin' && g.userData.median) anchorFin(g, body);
   const clean = parts.map((g) => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color'].includes(k)) g.deleteAttribute(k); return g.index ? g : g; });
   const out = mergeGeometries(clean, false);
   out.computeBoundingSphere();
