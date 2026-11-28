@@ -18,6 +18,7 @@ import { scorePhoto } from './photo.js';
 import { drawCracks } from './cracks.js';
 import { ib, svg } from './icons.js';
 import { Bestiary } from './bestiary.js';
+import { Encyclopedia } from './encyclopedia.js';
 import { bus } from './bus.js';
 import { addStyle } from './ui.js';
 import { FEATURES } from './features.js';
@@ -125,8 +126,10 @@ if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.h
 const store = new Store(), wallet = new Wallet();
 const toastEl = $('toast'); let toastT = 0;
 function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
-const bestiary = new Bestiary((n) => ib($('bookBtn'), 'book', `Bestiary (${n} pages)`), wallet);
-$('bookBtn').addEventListener('click', (e) => { setViewfinder(false); bestiary.open(); e.currentTarget.blur(); });
+let encyclopedia;
+const bestiary = new Bestiary(() => encyclopedia && encyclopedia.changed(), wallet);   // Fauna tab: stars, grants, page unlocks
+encyclopedia = new Encyclopedia(bestiary, { toast, onCount: (n) => ib($('bookBtn'), 'book', `Encyclopedia (${n} pages)`) });
+$('bookBtn').addEventListener('click', (e) => { setViewfinder(false); encyclopedia.open(); e.currentTarget.blur(); });
 const album = new AlbumUI(store, wallet, (n) => albumIcon(n), toast);
 const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`); ib($('vfAlbum'), 'album', `Album (${n})`); };
 albumIcon(0); store.list().then((l) => albumIcon(l.length));
@@ -192,7 +195,7 @@ addEventListener('wheel', (e) => {
 }, { passive: false });
 $('shutter').addEventListener('click', (e) => { wantSnap = true; e.currentTarget.blur(); });
 addEventListener('keydown', (e) => {
-  if (album.isOpen || bestiary.isOpen || shop.isOpen || e.repeat) return;
+  if (album.isOpen || encyclopedia.isOpen || shop.isOpen || e.repeat) return;
   if (e.code === 'KeyP') setViewfinder(!vf);
   else if (vf && e.code === 'Escape') setViewfinder(false);
   else if (vf && (e.code === 'Enter' || e.code === 'Space')) wantSnap = true;
@@ -290,7 +293,7 @@ async function finishSnapshot({ buf, w, h, meta, score, damage, blur }) {
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
   const [full, thumb] = await Promise.all([blobOf(cv, 0.9), blobOf(tc, 0.8)]);
-  // bestiary: crop each animal out of the (possibly cracked) snapshot
+  // Fauna pages: crop each animal out of the (possibly cracked) snapshot
   const fresh = bestiary.record(score.spots.filter((p) => p.frac >= 0.03).map(   // must be recognisable: >= 3% of frame height
     (p) => ({ id: p.id, frac: p.frac, crop: () => {
     const ch = Math.min(h, Math.max(h * 0.3, p.frac * h * (p.school ? 3.2 : 1.7))), cw = Math.min(w, ch * 4 / 3);
@@ -493,14 +496,14 @@ function frame(now) {
 const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLookX: () => 0, takeLookY: () => 0 };
 resize(); addEventListener('resize', resize);
 // plug-in features (src/features.js) get the whole game state
-const game = { THREE, scene, camera, renderer, canvas, field, terrain, fauna, sub, fleet, wallet, album, store, bestiary, daylight, weather, audio, input,
+const game = { THREE, scene, camera, renderer, canvas, field, terrain, fauna, sub, fleet, wallet, album, store, bestiary, encyclopedia, daylight, weather, audio, input,
   bubbles, snow, shafts, surface, say, toast, bus, params, get subModel() { return subModel; }, get viewfinder() { return vf; }, get zoom() { return zoom; },
   get lampLevel() { return lampLevel; }, get lampMode() { return lampMode; } };
 window.__game = game;
 for (const f of FEATURES) f.init(game);
 requestAnimationFrame((n) => { last = n; frame(n); });
 window.__sim = { smearCanvas,
-  bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed,
+  bestiary, encyclopedia, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed,
   fleet, shop, swapSub, setZoom, stepZoom, snapCam, captureSnapshot, finishSnapshot, motionBlur,
   get zoom() { return zoom; }, get lastShot() { return lastShot; }, get stats() { return fst; },
 };

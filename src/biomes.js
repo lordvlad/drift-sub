@@ -7,6 +7,8 @@
  * kind of place and the base terrain character, but never zeroes anything: all places can occur for every sub.
  */
 import { mulberry32, hash2 } from './noise.js';
+import { ROCK_RATES, createRockPlaces } from './biomes-rock.js';
+import { pickRare, applyRare } from './wrecks/place.js';
 
 export const CELL = 256;
 const INV = 1 / CELL, CELL_KM2 = (CELL * CELL) / 1e6;
@@ -39,6 +41,7 @@ const RATES = {
   dropoff: [0.4, 0.35, 1.9, 0.7],
   seamount:[0.3, 0.25, 1.7, 0.7],
 };
+Object.assign(RATES, ROCK_RATES);   // rare rock formations (stacks, blue holes, bridges, basalt, mushroom rocks, terraces)
 
 // ---- polylines --------------------------------------------------------------------------------------------------
 function makeLine(pts) {
@@ -101,8 +104,11 @@ export function createBiomes(seed, base) {
   }
   const avgDepth = (x, z, r) => (depthAt(x, z) * 2 + depthAt(x + r, z) + depthAt(x - r, z) + depthAt(x, z + r) + depthAt(x, z - r)) / 6;
 
+  const RK = createRockPlaces({ site, depthAt, avgDepth, P: () => P, base, N, sstep, clamp, mixTint: (...a) => mixTint(...a) });
+
   // ---------------------------------------------------------------- feature makers
   const MAKE = {
+    ...RK.make,
     bigreef(rng, ix, iz) {
       const maze = rng() < (P.id === 1 ? 0.4 : 0.14);
       const s = site(rng, ix, iz, (x, z) => { const d = depthAt(x, z); return d > 64 || d < 8 ? -1 : 0.5 + (1 - base.rock(x, z)) * 0.8 + base.reef(x, z) * 0.7 + (d < 56 ? 0.5 : 0); });
@@ -220,6 +226,8 @@ export function createBiomes(seed, base) {
       Object.assign(f, { length, beam, odd: Math.floor(rng() * 1000), heel: (rng() < 0.5 ? -1 : 1) * (0.12 + rng() * 0.3), pitch: (rng() - 0.5) * 0.25, r: length * 0.5 });
       f.ox = f.x; f.oz = f.z; f.R = length * 0.5 + 10 + f.fall;
       f.y0 -= 0.2;
+      const rr = mulberry32(hash2(ix * 17 + 5, iz * 31 + 9, seed ^ 0x5eed77)), roll = [rr(), rr()], rare = pickRare(roll, Math.min(surf, lim), P.reach, P.id);
+      if (rare) applyRare(f, rare, rr);   // one of the 20 real-wreck-inspired rare wrecks (src/wrecks)
     }
     return f;
   }
@@ -374,7 +382,7 @@ export function createBiomes(seed, base) {
         return d >= f.R ? h : h + 1.2 * (1 - sstep(0, f.r * 1.1, d)) * (0.5 + N.n1(x * 0.05, z * 0.05));
       }
     }
-    return h;
+    return RK.types.has(f.type) ? RK.shapeH(f, x, z, h) : h;
   }
 
   /** 0..1 how much this place makes the ground "rock" (colour, hardness, rock decor) */
@@ -388,7 +396,7 @@ export function createBiomes(seed, base) {
       case 'garden': return 1 - sstep(f.r * 0.7, f.r * 1.2, Math.hypot(x - f.x, z - f.z));
       case 'trench': { if (Math.hypot(x - f.x, z - f.z) >= f.R) return 0; lineDist(f.line, x, z); return 0.7 * taper(LT, 0.2) * (1 - sstep(f.hw * 0.6, f.hw * 1.15, LD)); }
     }
-    return 0;
+    return RK.types.has(f.type) ? RK.rockK(f, x, z) : 0;
   }
 
   /** the dominant biome weights contributed by a feature at (x,z): writes into w */
@@ -405,6 +413,7 @@ export function createBiomes(seed, base) {
       case 'trench': { if (Math.hypot(x - f.x, z - f.z) >= f.R) break; lineDist(f.line, x, z); const k = (1 - sstep(f.hw * 0.7, f.hw * 1.4, LD)) * taper(LT, 0.2); if (k > w.trench) w.trench = k; break; }
       case 'dropoff': { if (Math.hypot(x - f.x, z - f.z) >= f.R) break; lineDist(f.line, x, z); const k = (1 - sstep(f.wd * 0.8, f.wd * 3, LD)) * taper(LT, 0.14); if (k > w.trench) w.trench = k; break; }
     }
+    if (RK.types.has(f.type)) RK.biomeK(f, x, z, w);
   }
 
   // surface tint: composes onto out = { k, r, g, b, glow }
@@ -448,6 +457,7 @@ export function createBiomes(seed, base) {
         lineDist(f.line, x, z); mixTint(o, 0.45 * taper(LT, 0.2) * (1 - sstep(f.hw * 0.7, f.hw * 1.1, LD)), 0.3, 0.32, 0.36); break;
       }
     }
+    if (RK.types.has(f.type)) RK.shapeSurface(f, x, z, o);
   }
 
   // ---------------------------------------------------------------- public pieces
@@ -455,7 +465,7 @@ export function createBiomes(seed, base) {
   const pubOf = (f, field) => {
     let p = pubs.get(f);
     if (!p) {
-      p = { type: f.type, id: f.id, x: f.x, z: f.z, r: f.r, f };
+      p = { type: f.type, id: f.rare ? f.rare.id : f.id, x: f.x, z: f.z, r: f.r, f };   // id: the rare wreck's name for named rare wrecks (photo.js forwards it)
       Object.defineProperty(p, 'y', { get: () => field.heightAt(f.x, f.z), enumerable: true });
       pubs.set(f, p);
     }
@@ -470,16 +480,19 @@ export function createBiomes(seed, base) {
       P = np; cells.clear(); nearCache.clear(); mKey = NaN; mList = EMPTY;
       return true;
     },
+    /** test hook (wrecks/place.js forceRare): drop every cached cell so features are made again */
+    resetCells() { cells.clear(); nearCache.clear(); mKey = NaN; mList = EMPTY; },
     near, cellFeatures,
-    height(x, z, h) { const L = near(x, z); for (let i = 0; i < L.length; i++) h = shapeH(L[i], x, z, h); return h; },
+    // wreck pads are applied last so a neighbouring trench / drop-off cannot carve the seabed out from under the hull
+    height(x, z, h) { const L = near(x, z); for (let i = 0; i < L.length; i++) if (L[i].type !== 'wreck') h = shapeH(L[i], x, z, h); for (let i = 0; i < L.length; i++) if (L[i].type === 'wreck') h = shapeH(L[i], x, z, h); return h; },
     rock(x, z, r) { const L = near(x, z); for (let i = 0; i < L.length; i++) { const f = L[i]; if (f.type === 'bigreef') { r *= 1 - reefW(f, x, z) * 0.9; } else { const k = rockK(f, x, z); if (k > r) r = k; } } return r; },
     reef(x, z, r) { const L = near(x, z); for (let i = 0; i < L.length; i++) { const f = L[i]; if (f.type === 'bigreef') { const k = reefW(f, x, z); if (k > r) r = k; } } return r; },
     weights(x, z, w) { const L = near(x, z); for (let i = 0; i < L.length; i++) biomeK(L[i], x, z, w); return w; },
     surface(x, z, o) { o.k = 0; o.glow = 0; const L = near(x, z); for (let i = 0; i < L.length; i++) shapeSurface(L[i], x, z, o); return o; },
-    pubOf, toLocal, orientedW, volcanoD,
+    pubOf, toLocal, orientedW, volcanoD, rocks: RK,
     /** big reef footprint at (x,z): o = { w (0..1 inside the reef), u (distance / local radius), lag (lagoon 0..1) } */
     /** true inside the pad of a cave / arch / wreck: generic rocks, coral and weed keep out */
-    clear(x, z) { const L = near(x, z); for (let i = 0; i < L.length; i++) { const t = L[i].type; if ((t === 'cave' || t === 'arch' || t === 'wreck') && orientedW(L[i], x, z) > 0.12) return true; } return false; },
+    clear(x, z) { const L = near(x, z); for (let i = 0; i < L.length; i++) { const t = L[i].type; if ((t === 'cave' || t === 'arch' || t === 'wreck') && orientedW(L[i], x, z) > 0.12) return true; if (RK.types.has(t) && RK.clear(L[i], x, z)) return true; } return false; },
     reefInfo(f, x, z, o) { reefW(f, x, z); o.w = RW; o.u = RU; o.lag = RLAG; return o; },
     /** features whose disc intersects the query disc */
     featuresNear(x, z, radius, field) {

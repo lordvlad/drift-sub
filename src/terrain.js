@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32, hash2 } from './noise.js';
 import { buildPlumes } from './plumes.js';
 import { decorLandmarks } from './landmarks.js';
+import { FLORA_SIZE, coralKind, weedKind } from './templates.js';
 
 export const CS = 64;           // chunk size (world units)
 const RES = 40;                  // cells per side
@@ -78,7 +79,9 @@ const tint = (hex, j = 0) => new THREE.Color(hex).multiplyScalar(1 + j); // jitt
 
 function buildDecor(cx, cz, field, T, seed) {
   const rng = mulberry32(hash2(cx, cz, seed));
-  const out = new Out(), colliders = [], corals = [], weeds = [], emitters = [], heat = [];
+  const out = new Out(), colliders = [], corals = [], weeds = [], emitters = [], heat = [], flora = [];
+  /** record a plant for the Encyclopedia: kind index (templates.js FLORA), position, instance scale */
+  const addFlora = (k, x, y, z, s) => flora.push(x, y, z, FLORA_SIZE[k] * s, k);
   const x0 = cx * CS, z0 = cz * CS;
   const nrm = [0, 1, 0];
   const R = (a, b) => a + rng() * (b - a);
@@ -125,7 +128,7 @@ function buildDecor(cx, cz, field, T, seed) {
       const y = ground(x, z);
       const s = R(0.7, 1.9) * (ki === 5 ? 0.8 : 1);
       out.place(pick(fam.list), x, y, z, rng() * 6.28, s, s * R(0.8, 1.3), s, nrm, 0.35, col);
-      corals.push(x, y + s * 0.5, z);
+      corals.push(x, y + s * 0.5, z); addFlora(coralKind(ki, CORAL_TINTS.indexOf(tp)), x, y, z, s);
       if (ki === 1 || (ki === 2 && s > 1.4)) colliders.push(x, y + s * (ki === 1 ? 0.2 : 0.7), z, s * (ki === 1 ? 0.9 : 1.2), 0.6);
     }
   }
@@ -147,17 +150,17 @@ function buildDecor(cx, cz, field, T, seed) {
       const tpl = pick(kind === 'kelp' ? T.kelp : kind === 'tall' ? T.tall : T.grass);
       const s = R(0.75, 1.3);
       out.place(tpl, x, y - 0.05, z, rng() * 6.28, s, s * R(0.8, 1.2), s, nrm, 0.1, col);
-      weeds.push(x, y, z, (kind === 'kelp' ? 10 : kind === 'tall' ? 4 : 2) * s);
+      weeds.push(x, y, z, (kind === 'kelp' ? 10 : kind === 'tall' ? 4 : 2) * s); addFlora(weedKind(kind, WEED_TINTS.indexOf(baseTint)), x, y, z, s);
     }
   }
 
   // --- landmarks: big reefs, vents, lava, volcanoes, caves, arches, wrecks, gardens ---
-  decorLandmarks({ cx, cz, x0, z0, CS, field, T, seed, out, colliders, corals, weeds, emitters, heat, ground, nrm, tint, CORAL_TINTS, WEED_TINTS, KELP_TINTS });
+  decorLandmarks({ cx, cz, x0, z0, CS, field, T, seed, out, colliders, corals, weeds, flora, addFlora, emitters, heat, ground, nrm, tint, CORAL_TINTS, WEED_TINTS, KELP_TINTS });
 
   const g = out.geometry();
   g.computeBoundingSphere();
   if (g.boundingSphere) g.boundingSphere.radius += 6; // sway + patch spill
-  return { geometry: g, colliders, corals: new Float32Array(corals), weeds: new Float32Array(weeds), emitters, heat: new Float32Array(heat), plumeRng: rng };
+  return { geometry: g, colliders, corals: new Float32Array(corals), weeds: new Float32Array(weeds), flora: new Float32Array(flora), emitters, heat: new Float32Array(heat), plumeRng: rng };
 }
 
 const SAND = new THREE.Color(0xe3cf9a), DEEP = new THREE.Color(0x6b7378), ROCK = new THREE.Color(0x7d7872), REEFSAND = new THREE.Color(0xcdc196);
@@ -226,7 +229,7 @@ export class Terrain {
     const dm = new THREE.Mesh(d.geometry, this.decorMat); this.scene.add(dm);
     const pm = d.emitters.length ? buildPlumes(d.emitters, d.plumeRng) : null;
     if (pm) this.scene.add(pm);
-    this.chunks.set(this.key(cx, cz), { cx, cz, tm, dm, pm, colliders: d.colliders, corals: d.corals, weeds: d.weeds, emitters: d.emitters, heat: d.heat });
+    this.chunks.set(this.key(cx, cz), { cx, cz, tm, dm, pm, colliders: d.colliders, corals: d.corals, weeds: d.weeds, flora: d.flora, emitters: d.emitters, heat: d.heat });
     this.buildMs = performance.now() - t0; if (this.buildMs > this.worstMs) this.worstMs = this.buildMs; this.builtCount++;
   }
   _drop(ch) {

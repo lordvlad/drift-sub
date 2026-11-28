@@ -52,16 +52,32 @@ ${glow ? `if (vGlow > 0.003) {
 export const makeTerrainMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true }), { caustics: true, glow: true });
 export const makeDecorMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { sway: true, caustics: true, glow: true });
 
+/**
+ * Make `u.uFreq` phase-continuous. The creature shaders beat with sin(uTime * uFreq + uOff + ...); uTime grows without bound, so a bare
+ * `uTime * uFreq` swings by uTime * dFreq whenever the frequency eases (a hundred+ rad/s of flicker while an animal accelerates).
+ * Every uFreq change therefore moves uOff by uTime * (old - new), which keeps the beat phase unchanged and only alters its rate.
+ */
+export function lockPhase(u) {
+  let f = u.uFreq.value;
+  u.uOff = { value: 0 };
+  Object.defineProperty(u.uFreq, 'value', {
+    get: () => f,
+    set: (n) => { if (n === f) return; u.uOff.value = (u.uOff.value + shared.uTime.value * (f - n)) % (Math.PI * 2); f = n; },
+    enumerable: true, configurable: true,
+  });
+  return u;
+}
+
 /** Creature material: tail sway along z. axis (1,0,0) = side-to-side, (0,1,0) = up-down. */
 /** mode 'tail' (default): travelling body wave toward the tail; 'flap': wings beat up/down, growing toward the tips (manta). */
 export function makeCreatureMaterial({ amp, freq, axis = [1, 0, 0], wave = 4, mode = 'tail' }) {
-  const u = { uFreq: { value: freq }, uAmp: { value: amp }, uAxis: { value: new THREE.Vector3(...axis) }, uWave: { value: wave } };
+  const u = lockPhase({ uFreq: { value: freq }, uAmp: { value: amp }, uAxis: { value: new THREE.Vector3(...axis) }, uWave: { value: wave } });
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   mat.userData.u = u;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u, { uTime: shared.uTime });
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime, uFreq, uAmp, uWave;\nuniform vec3 uAxis;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime, uFreq, uOff, uAmp, uWave;\nuniform vec3 uAxis;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 {
   #ifdef USE_INSTANCING
@@ -71,10 +87,10 @@ export function makeCreatureMaterial({ amp, freq, axis = [1, 0, 0], wave = 4, mo
   #endif
   #ifdef FLAP
   float ax = abs(position.x);
-  transformed.y += sin(uTime * uFreq + ph - ax * uWave) * uAmp * ax * ax * 4.0;
+  transformed.y += sin(uTime * uFreq + uOff + ph - ax * uWave) * uAmp * ax * ax * 4.0;
   #else
   float w = clamp((0.25 - position.z) / 0.75, 0.0, 1.0); w *= w;
-  transformed += uAxis * sin(uTime * uFreq + ph - position.z * uWave) * uAmp * w;
+  transformed += uAxis * sin(uTime * uFreq + uOff + ph - position.z * uWave) * uAmp * w;
   #endif
 }`);
   };

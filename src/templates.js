@@ -218,3 +218,33 @@ export function buildTemplates(seed = 4242) {
   for (let i = 0; i < 3; i++) T.kelp.push(tuft(rng, 3, 6, 10, 0.2, 0.32, 0.3, 0.02));
   return T;
 }
+
+/**
+ * Flora catalogue ids (the Encyclopedia "Flora" tab, src/encyclopedia/flora.js). Terrain decor records one of these per placed plant in
+ * chunk.flora (Float32Array, stride 5: x, y, z, size, kind index); `size` = apparent extent in metres (height, or width for flat organisms).
+ */
+export const FLORA = ['staghorn', 'blue-coral', 'brain-coral', 'star-coral', 'table-coral', 'organ-pipe', 'tube-sponge', 'sea-fan', 'anemone',
+  'pillar-coral', 'porites', 'soft-coral', 'sea-whip', 'seagrass', 'eelgrass', 'sargassum', 'red-algae', 'giant-kelp', 'tube-worm', 'microbial-mat'];
+export const FK = Object.fromEntries(FLORA.map((id, i) => [id, i]));
+/** nominal extent (m) of a unit-scale instance of each kind */
+export const FLORA_SIZE = [1.4, 1.4, 1.3, 1.3, 3, 1.6, 1.6, 2, 1, 5.5, 5, 1.4, 3.3, 1.5, 3.3, 3.3, 1.5, 8, 1.5, 2];
+const WARM = [1, 1, 0, 1, 0, 1, 0, 0];   // CORAL_TINTS index -> warm (pink, orange, yellow, red) or cool (purple, teal, white, blue)
+/** standard coral family (T.coral index) + CORAL_TINTS index -> flora kind index */
+export function coralKind(fam, tintIdx) {
+  const warm = WARM[tintIdx] === 1;
+  switch (fam) {
+    case 0: return warm ? FK.staghorn : FK['blue-coral'];
+    case 1: return warm ? FK['brain-coral'] : FK['star-coral'];
+    case 2: return FK['table-coral'];
+    case 3: return tintIdx === 0 || tintIdx === 5 ? FK['organ-pipe'] : FK['tube-sponge'];
+    case 4: return FK['sea-fan'];
+    default: return FK.anemone;
+  }
+}
+/** weed kind ('grass' | 'tall' | 'kelp') + WEED_TINTS index -> flora kind index */
+export function weedKind(kind, tintIdx) {
+  if (kind === 'kelp') return FK['giant-kelp'];
+  if (tintIdx >= 5) return FK['red-algae'];
+  if (kind === 'grass') return FK.seagrass;
+  return tintIdx === 4 ? FK.sargassum : FK.eelgrass;
+}

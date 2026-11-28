@@ -26,6 +26,7 @@ const DEFAULT_VANTAGE = {
   bigreef: { dist: 0.55, up: 16 }, vent: { dist: 26, up: 7 }, magma: { dist: 18, up: 6 }, volcano: { dist: 0.7, up: 18 },
   cave: { dist: 22, up: 3 }, arch: { dist: 24, up: 4 }, wreck: { dist: 26, up: 7 }, canyon: { dist: 12, up: 12 },
   garden: { dist: 0.7, up: 8 }, trench: { dist: 0.5, up: 18 }, dropoff: { dist: 40, up: 16 }, seamount: { dist: 60, up: 16 },
+  stacks: { dist: 1.0, up: 12 }, bluehole: { dist: 1.05, up: 20 }, bridge: { dist: 30, up: 5 }, basalt: { dist: 1.1, up: 9 }, mushroom: { dist: 1.2, up: 5 }, terrace: { dist: 0.9, up: 14 },
 };
 
 function install(game) {

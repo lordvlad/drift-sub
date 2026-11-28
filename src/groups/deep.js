@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { registerSpecies } from '../species.js';
 import { registerSheets } from '../bestiary-data.js';
 import { swim, alarm } from '../fauna.js';
-import { shared } from '../materials.js';
+import { shared, lockPhase } from '../materials.js';
 import { DEEP_SHEETS } from '../data/deep-sheets.js';
 import * as M from '../models/deep.js';
+import { registerModel } from '../models/registry.js';
 
 /**
  * The dark sea (squid submarine places): deep-water animals, trench-edge dwellers and the fauna of hydrothermal vents.
@@ -53,7 +54,7 @@ const geo = (id) => (GEO[id] ||= M.MODELS[id]());
  * pulse: aMove >= 0 contracts the bell (xz), aMove < 0 sways trailing tentacles    (jellyfish)
  */
 function makeDeepMaterial({ mode = 'wave', freq = 2, amp = 0.1, wave = 4, axis = [1, 0, 0], pulse = 0.25 }) {
-  const u = { uFreq: { value: freq }, uAmp: { value: amp }, uWave: { value: wave }, uAxis: { value: new THREE.Vector3(...axis) }, uGlowPulse: { value: pulse } };
+  const u = lockPhase({ uFreq: { value: freq }, uAmp: { value: amp }, uWave: { value: wave }, uAxis: { value: new THREE.Vector3(...axis) }, uGlowPulse: { value: pulse } });
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   mat.userData.u = u; mat.userData.axis = axis;
   mat.defines = { [MODES[mode]]: '' };
@@ -62,7 +63,7 @@ function makeDeepMaterial({ mode = 'wave', freq = 2, amp = 0.1, wave = 4, axis =
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
 attribute vec3 aGlow; attribute float aMove; varying vec3 vGlow;
-uniform float uTime, uFreq, uAmp, uWave, uGlowPulse; uniform vec3 uAxis;`)
+uniform float uTime, uFreq, uOff, uAmp, uWave, uGlowPulse; uniform vec3 uAxis;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 {
   #ifdef USE_INSTANCING
@@ -71,17 +72,17 @@ uniform float uTime, uFreq, uAmp, uWave, uGlowPulse; uniform vec3 uAxis;`)
   float ph = 0.0;
   #endif
   #if defined(DEEP_PULSE)
-  float ps = sin(uTime * uFreq + ph);
+  float ps = sin(uTime * uFreq + uOff + ph);
   if (aMove >= 0.0) { transformed.xz *= 1.0 + uAmp * aMove * ps; transformed.y *= 1.0 - uAmp * 0.45 * aMove * ps; }
   else {
-    float sw = -aMove, a = uTime * uFreq * 0.55 + ph * 1.3 + position.y * uWave;
+    float sw = -aMove, a = (uTime * uFreq + uOff) * 0.55 + ph * 1.3 + position.y * uWave;
     transformed.x += sin(a) * uAmp * 0.35 * sw; transformed.z += cos(a * 0.8 + 1.0) * uAmp * 0.35 * sw;
     transformed.xz *= 1.0 + uAmp * (0.6 + 0.4 * ps) * sw * 0.35;
   }
   #elif defined(DEEP_FLAP)
-  transformed += uAxis * sin(uTime * uFreq + ph - abs(position.x) * uWave) * uAmp * aMove;
+  transformed += uAxis * sin(uTime * uFreq + uOff + ph - abs(position.x) * uWave) * uAmp * aMove;
   #else
-  transformed += uAxis * sin(uTime * uFreq + ph - position.z * uWave) * uAmp * aMove;
+  transformed += uAxis * sin(uTime * uFreq + uOff + ph - position.z * uWave) * uAmp * aMove;
   #endif
   vGlow = aGlow * (1.0 + uGlowPulse * sin(uTime * 2.1 + ph * 2.3));
 }`);
@@ -120,7 +121,7 @@ class Halos {
     const u = this.mat.userData.u, ax = this.mat.userData.axis, fade = clamp(1.25 - camDist / 80, 0.18, 1);
     for (const it of this.items) {
       const { s, l } = it;
-      if (l.follow) { const d = Math.sin(shared.uTime.value * u.uFreq.value - l.p[2] * u.uWave.value) * u.uAmp.value * l.follow; s.position.set(l.p[0] + ax[0] * d, l.p[1] + ax[1] * d, l.p[2] + ax[2] * d); }
+      if (l.follow) { const d = Math.sin(shared.uTime.value * u.uFreq.value + u.uOff.value - l.p[2] * u.uWave.value) * u.uAmp.value * l.follow; s.position.set(l.p[0] + ax[0] * d, l.p[1] + ax[1] * d, l.p[2] + ax[2] * d); }
       s.material.opacity = fade * (0.55 + 0.3 * Math.sin(t * 2.3 + it.ph) + 0.15 * Math.sin(t * 5.7 + it.ph * 2));
     }
   }
@@ -220,7 +221,7 @@ const BEH = {
   vampire:     { mode: 'swim', mat: { mode: 'flap', freq: 2.6, amp: 0.1, wave: 6, axis: [0, 1, 0], pulse: 0.3 }, cruise: [0.2, 0.42], burst: 3.4, acc: 3, shy: 0.85, turn: 0.6, alt: [3, 14], yAmp: 5, clear: 0.3, bank: 0.3, margin: 3, first: [40, 120], next: [80, 200], kind: 'fish', fr: 0.9, maxDist: 80, freqK: 1.5, pulse: true },
   dumbo:       { mode: 'swim', mat: { mode: 'flap', freq: 3.2, amp: 0.1, wave: 5, axis: [0, 1, 0], pulse: 0 }, cruise: [0.25, 0.5], burst: 2.4, acc: 2, shy: 0.7, turn: 0.7, alt: [0.8, 4], yAmp: 0.8, clear: 0.2, bank: 0.2, margin: 1.4, first: [25, 80], next: [50, 130], kind: 'fish', fr: 1.0, maxDist: 80, freqK: 2.2, hover: true },
   oarfish:     { mode: 'swim', mat: { mode: 'wave', freq: 2.0, amp: 0.05, wave: 12, axis: [1, 0, 0], pulse: 0 }, cruise: [0.5, 0.9], burst: 2.6, acc: 0.9, shy: 1.2, turn: 0.4, alt: [6, 26], yAmp: 8, clear: 0.15, bank: 0.35, margin: 4, first: [80, 200], next: [200, 420], kind: 'big', fr: 0.8, maxDist: 150, freqK: 1.4 },
-  spermwhale:  { mode: 'swim', mat: { mode: 'wave', freq: 1.0, amp: 0.05, wave: 3, axis: [0, 1, 0], pulse: 0 }, cruise: [1.6, 2.4], burst: 3.6, acc: 0.45, shy: 0.8, turn: 0.3, alt: [10, 40], yAmp: 14, clear: 0.12, bank: 0.2, margin: 6, first: [90, 220], next: [260, 520], kind: 'big', fr: 1.0, maxDist: 220, freqK: 0.25 },
+  spermwhale:  { mode: 'swim', mat: { mode: 'wave', freq: 1.0, amp: 0.05, wave: 3, axis: [0, 1, 0], pulse: 0 }, cruise: [1.6, 2.4], burst: 3.4, acc: 0.4, jerk: 0.2, maxTurn: 0.2, maxPitch: 0.08, shy: 0.8, turn: 0.3, alt: [10, 40], yAmp: 14, clear: 0.12, bank: 0.2, margin: 6, first: [90, 220], next: [260, 520], kind: 'big', fr: 1.0, maxDist: 220, freqK: 0.2 },
   isopod:      { mode: 'crawl', mat: { mode: 'wave', freq: 7, amp: 0.045, wave: 30, axis: [0, 1, 0], pulse: 0 }, cruise: [0.12, 0.28], burst: 1.1, acc: 2, shy: 0.8, turn: 0.4, lift: 0.07, first: [20, 60], next: [30, 80], kind: 'fish', fr: 0.9, maxDist: 70, freqK: 6 },
   ventoctopus: { mode: 'crawl', mat: { mode: 'wave', freq: 3.2, amp: 0.06, wave: 12, axis: [0, 1, 0], pulse: 0 }, cruise: [0.12, 0.3], burst: 2.4, acc: 3, shy: 0.9, turn: 0.5, lift: 0.1, leash: 14, jet: true, first: [20, 70], next: [60, 140], kind: 'fish', fr: 1.0, maxDist: 70, freqK: 3 },
 };
@@ -300,8 +301,10 @@ class Critter {
         steer = (o.hover ? Math.abs(dl - (def.min + def.max) / 2) < Math.abs(dr - (def.min + def.max) / 2) : dl > dr) ? 0.7 : -0.7;
       }
     }
-    const target = o.turn * (0.13 * Math.sin(t * 0.09 + this.y0) + 0.08 * Math.sin(t * 0.23 + 2)) + steer + clamp(angDiff(this.yaw, away), -1, 1) * this.fear * 0.9;
-    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * (0.6 + this.fear * 2)));
+    let target = o.turn * (0.13 * Math.sin(t * 0.09 + this.y0) + 0.08 * Math.sin(t * 0.23 + 2)) + steer + clamp(angDiff(this.yaw, away), -1, 1) * this.fear * 0.9;
+    if (o.maxTurn) target = clamp(target, -o.maxTurn, o.maxTurn);   // big animals: capped turn rate (o.maxTurn rad/s), eased in
+    const dr = (target - this.yawRate) * (1 - Math.exp(-dt * (0.6 + this.fear * 2)));
+    this.yawRate += o.maxTurn ? clamp(dr, -o.maxTurn * 0.4 * dt, o.maxTurn * 0.4 * dt) : dr;
     this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
     let gA = floorUnder(field, this.pos.x, this.pos.z, ax, az, L, this.pitch);
@@ -310,10 +313,11 @@ class Critter {
     if (o.hover) wantY = gA + o.alt[0] + (o.alt[1] - o.alt[0]) * (0.5 + 0.5 * Math.sin(t * 0.06 + this.y0));
     else wantY = Math.max(clamp(this.y0 + o.yAmp * Math.sin(t * 0.04 + this.y0 * 0.3), -def.max, -def.min), gA + o.margin + L * o.clear);
     wantY = Math.min(-2, Math.max(wantY, gA + o.margin * 0.5 + L * o.clear));
-    const v = swim(this, dt, this.speed, o.burst, o.acc);
+    const v = swim(this, dt, this.speed, o.burst, o.acc, o.jerk);
     const sp = o.pulse ? v * (0.5 + 1.0 * Math.pow(Math.max(0, Math.sin(t * (1.1 + this.fear * 2.2))), 2)) : v;
     const dy = clamp((wantY - this.pos.y) * 0.25, -0.8, 1.4);
-    this.pitch += (clamp(dy / Math.max(0.4, sp), -0.4, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.2));
+    const dp = (clamp(dy / Math.max(0.4, sp), -0.4, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.2));
+    this.pitch += o.maxPitch ? clamp(dp, -o.maxPitch * dt, o.maxPitch * dt) : dp;
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * sp * dt; this.pos.z += az * cp * sp * dt; this.pos.y += Math.sin(this.pitch) * sp * dt;
     const g = floorUnder(field, this.pos.x, this.pos.z, ax, az, L, this.pitch) + L * o.clear + o.margin * 0.5;
@@ -690,6 +694,14 @@ class DeepGroup {
     g.frozen = true; if (g instanceof Bloom) g.radius = g.n > 1 ? 2.2 : 0.5; if (g instanceof CrabClump) g.holdY = y;
     return g;
   }
+}
+
+// Encyclopedia 3D view: fresh geometry per open; tints follow the in-sea instance colours (clusters) or body tint (singles)
+const VIEW_TINT = { lantern: [0.6, 0.3, 0.72], atolla: [0.99, 0.8, 0.48], shrimp: [0.07, 0.4, 0.86], yeti: [0.08, 0.2, 0.88] };
+const VIEW_SCHOOL = new Set(['lantern', 'atolla', 'shrimp', 'yeti']);
+for (const def of DEEP) {
+  const t = VIEW_TINT[def.id], tint = t ? new THREE.Color().setHSL(t[0], t[1], t[2]) : new THREE.Color().setScalar(TINT[def.id] ? (TINT[def.id][0] + TINT[def.id][1]) / 2 : 1);
+  registerModel(def.id, { geometry: M.MODELS[def.id], tint, kind: VIEW_SCHOOL.has(def.id) ? 'school-member' : 'single' });
 }
 
 // ───────────────────────────── feature ─────────────────────────────

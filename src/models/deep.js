@@ -337,8 +337,17 @@ export function spermWhaleGeometry() {
   // blowhole (offset to the left at the front of the head), eye, pale scar marks
   parts.push(tag(blob([0.045, 0.228, 0.42], [0.018, 0.004, 0.03], 0x1a1a1e, { w: 6, h: 3 })));
   for (const sd of [-1, 1]) parts.push(tag(blob([sd * 0.121, 0.015, 0.32], [0.006, 0.008, 0.008], 0x101012, { w: 5, h: 4 })));
-  // dorsal hump / knuckles
-  parts.push(tag(fin([{ le: [0, 0.158, -0.12], te: [0, 0.158, -0.2], t: 0.03 }, { le: [0, 0.2, -0.15], te: [0, 0.2, -0.205], t: 0.016 }, { le: [0, 0.22, -0.17], te: [0, 0.22, -0.2], t: 0.004 }], { side: [1, 0, 0], span: 5, chord: 5, color: SK }), 0, (x, y, z) => smooth(0.15, -0.5, z)));
+  // dorsal hump / knuckle ridge: the root stations follow the back line (topY ~ the loft's dorsal height at x = 0) and start 0.035 inside it,
+  // so the hump grows out of the skin with no gap at any z (the whole part shares the body's tail-bend weight, which depends on z only)
+  {
+    const topY = (z) => 0.1373 + (z + 0.1402) * 0.29;
+    parts.push(tag(fin([
+      { le: [0, topY(-0.1) - 0.035, -0.1], te: [0, topY(-0.27) - 0.035, -0.27], t: 0.034 },
+      { le: [0, topY(-0.1) - 0.004, -0.1], te: [0, topY(-0.27) - 0.004, -0.27], t: 0.028 },
+      { le: [0, 0.188, -0.135], te: [0, 0.146, -0.245], t: 0.016 },
+      { le: [0, 0.208, -0.16], te: [0, 0.192, -0.215], t: 0.0005 },
+    ], { side: [1, 0, 0], span: 7, chord: 6, color: SK }), 0, (x, y, z) => smooth(0.15, -0.5, z)));
+  }
   // flippers
   {
     const st = [{ le: [0.1, -0.1, 0.12], te: [0.1, -0.1, 0.0], t: 0.016 }, { le: [0.17, -0.16, 0.1], te: [0.17, -0.16, -0.02], t: 0.014 }, { le: [0.23, -0.21, 0.07], te: [0.23, -0.21, -0.03], t: 0.008 }, { le: [0.26, -0.235, 0.04], te: [0.26, -0.235, -0.02], t: 0.003 }];

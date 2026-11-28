@@ -27,17 +27,25 @@ export function alarm(sub, x, y, z, sens = 1) {
 /**
  * Flexible swim speed: cruise when calm, sprint toward `burst` when scared. Speed changes with finite acceleration
  * (fast up, gentle coast down) and sprinting drains stamina, so a chase ends with the animal tiring back to cruise.
+ * With `jerk` (m/s^3) the acceleration itself ramps up and down, so a big animal eases into (and out of) a sprint instead of lurching.
  * Returns the current speed (m/s) and stores it in obj.v.
  */
-export function swim(obj, dt, cruise, burst, acc) {
-  if (obj.v === undefined) { obj.v = cruise; obj.stam = 1; }
+export function swim(obj, dt, cruise, burst, acc, jerk = Infinity) {
+  if (obj.v === undefined) { obj.v = cruise; obj.stam = 1; obj.a = 0; }
   const want = cruise + (burst - cruise) * Math.pow(obj.fear || 0, 0.7) * (0.25 + 0.75 * obj.stam);
   const dv = want - obj.v;
-  obj.v += dv > 0 ? Math.min(dv, acc * dt) : Math.max(dv, -acc * 0.35 * dt);
+  if (jerk === Infinity) obj.v += dv > 0 ? Math.min(dv, acc * dt) : Math.max(dv, -acc * 0.35 * dt);
+  else {
+    const wantA = clamp(dv * 1.2, -acc * 0.35, acc), step = jerk * dt;
+    obj.a = (obj.a ?? 0) + clamp(wantA - (obj.a ?? 0), -step, step);
+    obj.v += obj.a * dt;
+  }
   const sprint = clamp((obj.v - cruise * 1.25) / Math.max(0.1, burst - cruise), 0, 1);
   obj.stam = clamp(obj.stam - sprint * 0.11 * dt + (sprint === 0 ? 0.06 * dt : 0), 0, 1);
   return obj.v;
 }
+/** Exponential ease of a value toward a target (rate in 1/s). */
+const easeTo = (cur, target, dt, rate) => cur + (target - cur) * (1 - Math.exp(-dt * rate));
 /** Activity by time of day: >1 means seen more often. */
 const ACTIVITY = {
   shark:      { night: 1.8, dawn: 1.6, morning: 1, day: 0.7, evening: 1.6 },
@@ -284,20 +292,21 @@ class Shark extends Big {
     } else if (dist < 70 && Math.random() < dt * 0.01) this.cur = R(25, 50);
     const away = this.scare(sub, dt, 1.1);
     if (this.fear > 0.05) { this.cur = 0; wantYaw = away; }
-    const target = clamp(angDiff(this.yaw, wantYaw), -1, 1) * (0.4 + this.fear * 0.6);
-    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * 0.8));
+    const target = clamp(angDiff(this.yaw, wantYaw), -1, 1) * (0.35 + this.fear * 0.3);   // a sprinting shark arcs away at <= ~0.65 rad/s, with a limited turn acceleration
+    this.yawRate += clamp((target - this.yawRate) * (1 - Math.exp(-dt * 0.8)), -0.4 * dt, 0.4 * dt);
     this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
     const gA = this.aheadGround(field, ax, az, [6, 12, 22, 34]);
     const wantY = this.bandY(Math.max(gA + 8 + Math.sin(t * 0.05) * 6, gA + 4), gA, 4);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.5);
-    const spd = swim(this, dt, this.speed, 10, 4.5);   // reef sharks sprint to ~10 m/s in about 2 s
+    const spd = swim(this, dt, this.speed, 9, 2.8, 3.2);   // reef sharks sprint to ~9 m/s over ~2-3 s, easing in
     this.pitch += (clamp(dy / Math.max(1, spd), -0.4, 0.7) - this.pitch) * (1 - Math.exp(-dt * 1.6));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.2 + 0.6);
     this.roll += (-this.yawRate * 1.3 - this.roll) * (1 - Math.exp(-dt * 2));
-    this.mat.userData.u.uFreq.value = Math.min(6.5, 2.6 + spd * 0.4);   // tail beats faster when sprinting, but stays a plausible few Hz
+    this.fq = easeTo(this.fq ?? 2.6, Math.min(5.5, 2.6 + spd * 0.35), dt, 1.5);   // tail beats faster when sprinting (eased, a plausible ~1 Hz)
+    this.mat.userData.u.uFreq.value = this.fq;
     this.place();
     if (Math.hypot(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z) > 190) this.despawn();
   }
@@ -334,23 +343,29 @@ class Whale extends Big {
   update(dt, field, sub) {
     this.t += dt; const t = this.t;
     const away = this.scare(sub, dt, 1.4);
-    const turn = 0.03 * Math.sin(t * 0.04) + 0.02 * Math.sin(t * 0.11) + clamp(angDiff(this.yaw, away), -1, 1) * 0.22 * this.fear;
-    this.yaw += turn * dt;
+    // a startled whale swings away in a slow, banked arc: the turn rate is eased in (and capped at ~0.2 rad/s), never snapped
+    const tw = 0.03 * Math.sin(t * 0.04) + 0.02 * Math.sin(t * 0.11) + clamp(angDiff(this.yaw, away), -1, 1) * 0.2 * this.fear;
+    this.yawRate += (tw - this.yawRate) * (1 - Math.exp(-dt * 0.7));
+    const ppx = this.pos.x, ppy = this.pos.y, ppz = this.pos.z;
+    this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw);
     const gA = this.aheadGround(field, ax, az, [15, 30, 50, 80]);
     const wantY = this.bandY(Math.max(gA + 14, this.pos.y + Math.sin(t * 0.08) * 2), gA, 12);
     const dy = clamp((wantY - this.pos.y) * 0.12, -0.8, 1.4);
-    const spd = swim(this, dt, this.speed, this.speed * 1.5, 0.35);   // whales cannot outrun the sub, they just lumber away
+    const spd = swim(this, dt, this.speed, this.speed * 1.4, 0.3, 0.2);   // whales cannot outrun the sub, they just lumber away
     this.pitch += (clamp(dy / Math.max(1, spd), -0.2, 0.35) + Math.sin(t * 0.25) * 0.04 - this.pitch) * (1 - Math.exp(-dt * 0.9));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
     this.groundGuard(field, this.len * 0.18 + 1);
-    this.roll = Math.sin(t * 0.2) * 0.05;
+    this.roll = Math.sin(t * 0.2) * 0.05 - this.yawRate * 0.8;
+    this.fq = easeTo(this.fq ?? 1.4, Math.min(1.6, 0.9 + spd * 0.18), dt, 1);   // flukes beat ~0.25 Hz, only a little faster in a bolt
+    this.mat.userData.u.uFreq.value = this.fq; this.calfMesh.material.userData.u.uFreq.value = Math.min(2.4, 1.5 + spd * 0.22);
     this.place();
     if (this.hasCalf) {
       const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
       const tx = this.pos.x + rx * this.len * 0.28 - ax * this.len * 0.12, ty = this.pos.y - this.len * 0.22, tz = this.pos.z + rz * this.len * 0.28 - az * this.len * 0.12;
       const k = 1 - Math.exp(-dt * 0.9);
+      this.calfPos.x += this.pos.x - ppx; this.calfPos.y += this.pos.y - ppy; this.calfPos.z += this.pos.z - ppz;   // rides along with the mother, then drifts to its slot
       this.calfPos.x += (tx - this.calfPos.x) * k; this.calfPos.y += (ty - this.calfPos.y) * k; this.calfPos.z += (tz - this.calfPos.z) * k;
       const cg = field.heightAt(this.calfPos.x, this.calfPos.z) + this.len * 0.4 * 0.2 + 0.8; if (this.calfPos.y < cg) this.calfPos.y = cg;
       this.calfMesh.position.copy(this.calfPos); this.calfMesh.rotation.set(-this.pitch, this.yaw, this.roll * 1.5);
@@ -436,7 +451,7 @@ class Pod {
       this.mesh.setColorAt(i, c);
     }
     this.mesh.instanceColor.needsUpdate = true; this.mesh.count = this.n; this.active = true;
-    this.mat.userData.u.uFreq.value = 1.5 + this.speed * 0.5;
+    this.fq = o.beat[0] + this.speed * o.beat[1]; this.mat.userData.u.uFreq.value = this.fq;
   }
   bandY(y, ground) { return bandY(this.sp, y, ground, this.len * 0.5 + 1.5); }
   update(dt, field, sub) {
@@ -444,31 +459,40 @@ class Pod {
     const f = alarm(sub, this.pos.x, this.pos.y, this.pos.z, o.shy);
     this.fear += (f - this.fear) * (1 - Math.exp(-dt * (f > this.fear ? 3 : 0.4)));
     const away = Math.atan2(this.pos.x - sub.pos.x, this.pos.z - sub.pos.z);
-    const target = 0.12 * Math.sin(t * 0.08) + 0.08 * Math.sin(t * 0.21 + 1) + clamp(angDiff(this.yaw, away), -1, 1) * this.fear * 1.2;
-    this.yawRate += (target - this.yawRate) * (1 - Math.exp(-dt * (0.6 + this.fear * 2))); this.yaw += this.yawRate * dt;
+    // the pod swings away in a wide arc: turn rate capped (o.turn rad/s) and eased in with a limited turn acceleration
+    const target = clamp(0.12 * Math.sin(t * 0.08) + 0.08 * Math.sin(t * 0.21 + 1) + clamp(angDiff(this.yaw, away), -1, 1) * this.fear * 1.2, -o.turn, o.turn);
+    this.yawRate += clamp((target - this.yawRate) * (1 - Math.exp(-dt * (0.5 + this.fear * 0.8))), -o.yawAcc * dt, o.yawAcc * dt);
+    const lx = this.pos.x, ly = this.pos.y, lz = this.pos.z;
+    this.yaw += this.yawRate * dt;
     const ax = Math.sin(this.yaw), az = Math.cos(this.yaw), L = this.len;
     let gA = field.heightAt(this.pos.x, this.pos.z);
     for (const k of [1, 2, 4, 6]) gA = Math.max(gA, field.heightAt(this.pos.x + ax * L * k, this.pos.z + az * L * k));
     const wantY = this.bandY(Math.max(gA + o.alt[0] + (o.alt[1] - o.alt[0]) * (0.5 + 0.5 * Math.sin(t * 0.06)), gA + L * 0.8), gA);
     const dy = clamp((wantY - this.pos.y) * 0.2, -1.2, 2.2);
-    const spd = swim(this, dt, this.speed, o.burst, o.acc);
-    this.mat.userData.u.uFreq.value = Math.min(4.5, 1.4 + spd * 0.3);
-    this.pitch += (clamp(dy / Math.max(1, spd), -0.35, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.4));
+    const spd = swim(this, dt, this.speed, o.burst, o.acc, o.jerk);
+    this.fq = easeTo(this.fq, Math.min(o.beat[2], o.beat[0] + spd * o.beat[1]), dt, 1.2);   // tail beat eased: no sudden changes in rhythm
+    this.mat.userData.u.uFreq.value = this.fq;
+    this.pitch += (clamp(dy / Math.max(1, spd), -0.35, 0.55) - this.pitch) * (1 - Math.exp(-dt * 1.0));
     const cp = Math.cos(this.pitch);
     this.pos.x += ax * cp * spd * dt; this.pos.z += az * cp * spd * dt; this.pos.y += Math.sin(this.pitch) * spd * dt;
-    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw), k = 1 - Math.exp(-dt * (1.6 + spd * 0.35)), arr = this.mesh.instanceMatrix.array;
+    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw), k = 1 - Math.exp(-dt * (0.8 + spd * 0.05)), arr = this.mesh.instanceMatrix.array;
+    const dlx = this.pos.x - lx, dly = this.pos.y - ly, dlz = this.pos.z - lz;   // members ride along with the leader's motion, then settle softly into their slots (no lag build-up, no jitter)
     for (let i = 0; i < this.n; i++) {
       const j = i * 3, ox = this.OFF[j], oy = this.OFF[j + 1], oz = this.OFF[j + 2];
       const bob = Math.sin(t * o.bob + this.PH[i]) * L * 0.22;
       const tx = this.pos.x + rx * ox + ax * oz, tz = this.pos.z + rz * ox + az * oz;
       let ty = this.pos.y + oy + bob;
       const px = this.P[j], py = this.P[j + 1], pz = this.P[j + 2];
-      this.P[j] += (tx - px) * k; this.P[j + 2] += (tz - pz) * k; this.P[j + 1] += (ty - py) * k;
+      this.P[j] += dlx + (tx - px) * k; this.P[j + 2] += dlz + (tz - pz) * k; this.P[j + 1] += dly + (ty - py) * k;
       const floor = field.heightAt(this.P[j], this.P[j + 2]) + this.SC[i] * 0.2 + 0.6;   // members never touch the seabed
       if (this.P[j + 1] < floor) this.P[j + 1] = floor;
       if (this.P[j + 1] > -1.5) this.P[j + 1] = -1.5;
       const vx = this.P[j] - px, vy = this.P[j + 1] - py, vz = this.P[j + 2] - pz, h = Math.hypot(vx, vz);
-      if (h > 1e-4) { this.YAW[i] = this.yaw + clamp(Math.atan2(vx, vz) - this.yaw, -0.5, 0.5); this.PIT[i] += (clamp(Math.atan2(vy, h), -0.5, 0.5) - this.PIT[i]) * 0.2; }
+      if (h > 1e-4) {   // heading follows the member's own motion, within 0.5 rad of the leader's and eased
+        const wy = this.yaw + clamp(angDiff(this.yaw, Math.atan2(vx, vz)), -0.5, 0.5);
+        this.YAW[i] += angDiff(this.YAW[i], wy) * (1 - Math.exp(-dt * 4));
+        this.PIT[i] += (clamp(Math.atan2(vy, h), -0.5, 0.5) - this.PIT[i]) * (1 - Math.exp(-dt * 5));
+      }
       _pq.setFromEuler(_pe.set(-this.PIT[i], this.YAW[i], -this.yawRate * 0.8));
       _pm.compose(_pv.set(this.P[j], this.P[j + 1], this.P[j + 2]), _pq, _ps.setScalar(this.SC[i]));
       _pm.toArray(arr, i * 16);
@@ -496,8 +520,8 @@ export class Fauna {
         speed: [1.2, 2], alt: [3, 12], margin: 3, clear: 0.1, turn: 0.8, bank: 0.5, exotic: 0.05, pulse: true }),
     ];
     this.pods = [
-      new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { kind: 'dolphin', shy: 0.8, burst: 11, acc: 6, first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
-      new Pod(scene, orcaGeometry(), ORCAS, 6, { kind: 'orca', shy: 0.7, burst: 12, acc: 5, first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
+      new Pod(scene, dolphinGeometry(), DOLPHINS, 9, { kind: 'dolphin', shy: 0.8, burst: 10, acc: 2.4, jerk: 2, turn: 0.7, yawAcc: 0.5, beat: [1.4, 0.3, 4.5], first: () => R(20, 60), next: () => R(60, 150), speed: [3.4, 4.6], alt: [4, 16], bob: 1.1, hue: 0.58, sat: 0.12 }),
+      new Pod(scene, orcaGeometry(), ORCAS, 6, { kind: 'orca', shy: 0.7, burst: 10.5, acc: 1.8, jerk: 1.5, turn: 0.45, yawAcc: 0.3, beat: [1.2, 0.26, 3.8], first: () => R(90, 200), next: () => R(200, 400), speed: [3, 4], alt: [5, 18], bob: 0.7, hue: 0.6, sat: 0.04 }),
     ];
     const sg = Object.fromEntries(SHARKS.map((s) => [s.id, sharkGeometry(s.id)]));
     this.sharks = [0, 1, 2].map(() => new Shark(scene, sg));

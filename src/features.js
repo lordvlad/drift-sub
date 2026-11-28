@@ -10,4 +10,7 @@ import commissions from './features/commissions.js';
 import deep from './groups/deep.js';
 import places from './features/places.js';
 import pelagic from './groups/pelagic.js';
-export const FEATURES = [logbook, wardrobe, gallery, commissions, equipment, deep, places, pelagic];
+import flora from './encyclopedia/flora.js';   // registers the Encyclopedia Flora tab at import time
+import terrain from './encyclopedia/terrain-pages.js';   // registers the Encyclopedia Terrain tab at import time
+import wrecks from './encyclopedia/wrecks.js';   // registers the Encyclopedia Wrecks tab at import time (rare wrecks, src/wrecks)
+export const FEATURES = [logbook, wardrobe, gallery, commissions, equipment, deep, places, pelagic, flora, terrain, wrecks];

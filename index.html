@@ -169,7 +169,7 @@
 <div id="hud"><div id="speed"></div></div>
 <div id="gauge"><div id="gHead">Units below sea level: <b id="gNow">0m</b></div><div id="gLim">Max dive depth <span id="gMax"></span></div>
   <div id="gRule"><div id="gDanger"></div><div id="gTicks"></div><div id="gMark"><span id="gVal"></span><i></i></div></div></div>
-<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="bookBtn" title="Bestiary"></button><button id="albumBtn" title="Snapshot album"></button><button id="shopBtn" title="Shop"></button><button id="swapBtn" title="Switch submarine" hidden></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)" hidden></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
+<div id="tools"><button id="modeBtn" title="Switch between touch / keyboard+mouse controls"></button><button id="bookBtn" title="Encyclopedia"></button><button id="albumBtn" title="Snapshot album"></button><button id="shopBtn" title="Shop"></button><button id="swapBtn" title="Switch submarine" hidden></button><button id="timeBtn" title="Time of day (auto = your clock)"></button><button id="lampBtn" title="Headlights (F)" hidden></button><button id="waveBtn" title="Sea state"></button><button id="soundBtn"></button></div>
 <div id="touchui"><div id="joy"><b class="jl">◀</b><b class="jr">▶</b><div id="knob"></div></div><div class="vbtn" id="btnUp">▲</div><div class="vbtn" id="btnDown">▼</div></div>
 <div id="fsBanner" hidden><span>Fullscreen is more immersive.</span><button id="fsGo">Go fullscreen</button><button id="fsX" aria-label="Dismiss">✕</button></div>
 <button id="snapBtn" title="Take snapshot (P)" aria-label="Take snapshot"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
@@ -187,7 +187,8 @@
   <div id="albumView" hidden><div id="viewMain"><img id="albumImg" alt="snapshot"></div><div id="viewBar"><button id="viewPrev" aria-label="Older"></button><span id="albumCap"></span><button id="viewNext" aria-label="Newer"></button><span class="sp"></span><button id="viewSell" class="primary"></button><button id="viewDl"></button><button id="viewDel"></button><button id="viewClose"></button></div></div>
 </div>
 <div id="bestiary" hidden>
-  <div class="bbar"><b>Bestiary</b><span id="bCount"></span><span class="sp"></span><button id="bClose"></button></div>
+  <div class="bbar"><b>Encyclopedia</b><span id="bCount"></span><span class="sp"></span><button id="bClose"></button></div>
+  <nav id="bTabs" role="tablist" aria-label="Encyclopedia sections"></nav>
   <div id="bGrid"></div>
   <div id="bPage" hidden><div class="bbar"><button id="bBack"></button><span id="bNum"></span><span class="sp"></span><button id="bPrev"></button><button id="bNext"></button></div><article id="bBody"></article></div>
 </div>

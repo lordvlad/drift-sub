@@ -5,6 +5,7 @@ import { bandY, registerSpecies } from '../species.js';
 import { registerSheets } from '../bestiary-data.js';
 import { PELAGIC_SHEETS } from '../data/pelagic-sheets.js';
 import * as M from '../models/pelagic.js';
+import { registerModel } from '../models/registry.js';
 
 /**
  * Open-ocean animals (barracuda's places) and cave / arch / wreck / reef-labyrinth animals (manta's places).
@@ -663,6 +664,9 @@ class PelagicGroup {
   sightings(emit) { for (const a of this.slots) if (a.active) a.sights(emit); }
   hideAll() { for (const a of this.slots) if (a.active) a.despawn(); }
 }
+
+// Encyclopedia 3D view: the same models, tinted with the in-sea brightness gain
+for (const sp of PELAGIC) registerModel(sp.id, { geometry: GEOS[sp.id], tint: sp.id === 'octopus' ? new THREE.Color(0xe6e0d1) : new THREE.Color().setScalar(GAIN[sp.id] ?? 1), kind: sp.cls === 'school' ? 'school-member' : 'single' });
 
 export const pelagic = new PelagicGroup();
 export { findSpot };

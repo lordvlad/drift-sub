@@ -10,6 +10,9 @@ import * as THREE from 'three';
 import { mulberry32, hash2, createNoise } from './noise.js';
 import { PLUME } from './plumes.js';
 import { buildLandmarkTemplates, buildWreck, buildArch, buildCave } from './models/landmarks.js';
+import { rareAssembly, rareExtras } from './landmarks-wrecks.js';
+import { FK, coralKind, weedKind } from './templates.js';
+import { rockDecor, warmRock } from './landmarks-rock.js';
 
 let LTcache = null;
 const LT = () => LTcache || (LTcache = buildLandmarkTemplates(777));
@@ -29,7 +32,8 @@ export function warmLandmarks(step) {
   else if (step === 1) buildCave(1, { length: 30, radius: 4 });
   else if (step === 2) buildWreck(2, { length: 32, beam: 9 });
   else if (step === 3) buildArch(3, { span: 18, height: 11, thick: 4 });
-  return step < 3;
+  else if (step === 4 || step === 5) warmRock(step - 4);
+  return step < 5;
 }
 
 export function decorLandmarks(c) {
@@ -41,8 +45,10 @@ export function decorLandmarks(c) {
   }
 }
 
+let _ti = 0, _wi = 0;   // index of the last palette colour / weed tint picked (for flora ids)
 /** tint a template instance with a coral palette colour */
-function coralColor(c, rng, pal) { const tp = pal[Math.floor(rng() * pal.length)]; return c.tint(rng() < 0.75 ? tp[0] : tp[1], (rng() - 0.5) * 0.2); }
+function coralColor(c, rng, pal) { const tp = pal[Math.floor(rng() * pal.length)]; _ti = c.CORAL_TINTS.indexOf(tp); return c.tint(rng() < 0.75 ? tp[0] : tp[1], (rng() - 0.5) * 0.2); }
+function weedTint(c, rng) { _wi = Math.floor(rng() * c.WEED_TINTS.length); return c.WEED_TINTS[_wi]; }
 const pickFrom = (rng, a) => a[Math.floor(rng() * a.length)];
 const R = (rng, a, b) => a + rng() * (b - a);
 
@@ -69,6 +75,7 @@ function bigreef(f, c, rng) {
       const y = c.ground(x, z), s = R(rng, 0.8, 2.0) * (ki === 5 ? 0.8 : 1);
       out.place(pickFrom(rng, T.coral[ki].list), x, y, z, rng() * 6.283, s, s * R(rng, 0.8, 1.3), s, c.nrm, 0.35, coralColor(c, rng, pal));
       corals.push(x, y + s * 0.5, z);
+      c.addFlora(coralKind(ki, _ti), x, y, z, s);
       if (ki === 1 || (ki === 2 && s > 1.4)) colliders.push(x, y + s * (ki === 1 ? 0.2 : 0.7), z, s * (ki === 1 ? 0.9 : 1.2), 0.6);
     }
   }
@@ -80,8 +87,8 @@ function bigreef(f, c, rng) {
     const y = c.ground(x, z), rl = rel(y), lag = info.lag, roll = rng();
     const yaw = rng() * 6.283, col = coralColor(c, rng, palette);
     if (lag > 0.5) {                          // lagoon: lone bommies and thickets on sand
-      if (roll < 0.1) { const s = R(rng, 0.8, 1.5); out.place(pickFrom(rng, L.bommies), x, y - 0.2, z, yaw, s, s, s, c.nrm, 0.3, col); colliders.push(x, y + 1.2 * s, z, 2.6 * s, 0.6); corals.push(x, y + 1.5 * s, z); bigN++; }
-      else if (roll < 0.22) { const s = R(rng, 0.9, 1.4); out.place(pickFrom(rng, L.thickets), x, y, z, yaw, s, s, s, c.nrm, 0.3, col); corals.push(x, y + s, z); bigN++; }
+      if (roll < 0.1) { const s = R(rng, 0.8, 1.5); out.place(pickFrom(rng, L.bommies), x, y - 0.2, z, yaw, s, s, s, c.nrm, 0.3, col); colliders.push(x, y + 1.2 * s, z, 2.6 * s, 0.6); corals.push(x, y + 1.5 * s, z); c.addFlora(FK.porites, x, y, z, s); bigN++; }
+      else if (roll < 0.22) { const s = R(rng, 0.9, 1.4); out.place(pickFrom(rng, L.thickets), x, y, z, yaw, s, s, s, c.nrm, 0.3, col); corals.push(x, y + s, z); c.addFlora(FK.staghorn, x, y, z, s); bigN++; }
       continue;
     }
     if (rng() > info.w) continue;
@@ -90,20 +97,25 @@ function bigreef(f, c, rng) {
       out.place(tpl, x, y - 0.3, z, yaw, s, s * R(rng, 0.9, 1.3), s, c.nrm, 0.15, col);
       for (const [hy, hr] of [[1.4, 1.35], [3.5, 1.1], [5.5, 0.9]]) colliders.push(x, y + hy * s, z, hr * s, 0.6);
       corals.push(x, y + 3 * s, z); bigN++;
+      c.addFlora(FK['pillar-coral'], x, y, z, s);
     } else if (rl > 0.2 && roll < 0.58) {     // slopes: table-coral plates
       const s = R(rng, 0.9, 1.5);
       out.place(pickFrom(rng, L.plates), x, y - 0.2, z, yaw, s, s, s, c.nrm, 0.2, col);
       colliders.push(x, y + 1.0 * s, z, 0.9 * s, 0.6); colliders.push(x, y + 2.35 * s, z, 2.2 * s, 0.6);
       corals.push(x, y + 2.4 * s, z); bigN++;
+      c.addFlora(FK['table-coral'], x, y, z, s);
     } else if (roll < 0.76) {                 // bommies
       const s = R(rng, 0.8, 1.7);
       out.place(pickFrom(rng, L.bommies), x, y - 0.25, z, yaw, s, s, s, c.nrm, 0.25, col);
       colliders.push(x, y + 1.2 * s, z, 2.6 * s, 0.6); corals.push(x, y + 1.5 * s, z); bigN++;
+      c.addFlora(FK.porites, x, y, z, s);
     } else if (roll < 0.9) {
       const s = R(rng, 0.9, 1.5); out.place(pickFrom(rng, L.thickets), x, y, z, yaw, s, s, s, c.nrm, 0.3, col); corals.push(x, y + s, z); bigN++;
+      c.addFlora(FK.staghorn, x, y, z, s);
     } else {                                  // gorgonian fans
       const s = R(rng, 0.8, 1.5); out.place(pickFrom(rng, L.gorgonians), x, y - 0.1, z, yaw, s, s, s, c.nrm, 0.1, c.tint(pickFrom(rng, [0xd24c8c, 0xe08a3a, 0xb04ad0, 0xe0d040]), (rng() - 0.5) * 0.2), 1);
       corals.push(x, y + 1.4 * s, z); bigN++;
+      c.addFlora(FK['sea-fan'], x, y, z, s);
     }
   }
   // soft corals and sea whips: cheap waving tufts in coral colours, clumped over the reef
@@ -115,6 +127,7 @@ function bigreef(f, c, rng) {
     for (let i = 0; i < n; i++) {
       const a = rng() * 6.283, d = pr * Math.sqrt(rng()), x = px + Math.cos(a) * d, z = pz + Math.sin(a) * d, y = c.ground(x, z), s = R(rng, 0.7, 1.4);
       out.place(pickFrom(rng, tall ? T.tall : T.grass), x, y - 0.05, z, rng() * 6.283, s, s * R(rng, 0.8, 1.2), s, c.nrm, 0.1, c.tint(pal[rng() < 0.7 ? 0 : 1], (rng() - 0.5) * 0.25));
+      c.addFlora(tall ? FK['sea-whip'] : FK['soft-coral'], x, y, z, s);
     }
   }
   // seagrass and weed in the sandy lagoon and between the ridges
@@ -130,6 +143,7 @@ function bigreef(f, c, rng) {
       const s = R(rng, 0.8, 1.4);
       out.place(pickFrom(rng, kind === 'grass' ? T.grass : T.tall), x, y - 0.05, z, rng() * 6.283, s, s * R(rng, 0.8, 1.2), s, c.nrm, 0.1, c.tint(baseTint, (rng() - 0.5) * 0.3));
       weeds.push(x, y, z, (kind === 'grass' ? 2 : 4) * s);
+      c.addFlora(weedKind(kind, c.WEED_TINTS.indexOf(baseTint)), x, y, z, s);
     }
   }
 }
@@ -145,11 +159,13 @@ function vent(f, c, rng) {
     for (let i = 0; i < nw; i++) {
       const a = rng() * 6.283, d = s * R(rng, 1.4, 4.2), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d, py = c.ground(px, pz), ws = R(rng, 0.7, 1.5);
       out.place(pickFrom(rng, tw), px, py - 0.05, pz, rng() * 6.283, ws, ws * R(rng, 0.8, 1.3), ws, c.nrm, 0.3, wormTint());
+      c.addFlora(FK['tube-worm'], px, py, pz, ws);
     }
     const nm = 2 + Math.floor(rng() * 3);
     for (let i = 0; i < nm; i++) {
       const a = rng() * 6.283, d = s * R(rng, 0.8, 5), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d, py = c.ground(px, pz), ms = R(rng, 0.9, 2.2);
       out.place(pickFrom(rng, mats), px, py + 0.03, pz, rng() * 6.283, ms, 1, ms, c.nrm, 0.9, c.tint(pickFrom(rng, MINERAL), (rng() - 0.5) * 0.25));
+      c.addFlora(FK['microbial-mat'], px, py, pz, ms);
     }
     if (rng() < 0.7) {
       const a = rng() * 6.283, d = s * R(rng, 2.2, 5), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d, py = c.ground(px, pz), ss = R(rng, 0.7, 1.3), tpl = pickFrom(rng, L.chimneysSmall);
@@ -176,8 +192,8 @@ function vent(f, c, rng) {
     const x = c.x0 + rng() * c.CS, z = c.z0 + rng() * c.CS, d = Math.hypot(x - f.x, z - f.z);
     if (d > f.r * 1.1 || rng() > 1 - sstep(f.r * 0.2, f.r * 1.15, d)) continue;
     const y = c.ground(x, z), r = rng();
-    if (r < 0.4) { const ws = R(rng, 0.7, 1.4); out.place(pickFrom(rng, tw), x, y - 0.05, z, rng() * 6.283, ws, ws, ws, c.nrm, 0.3, wormTint()); }
-    else if (r < 0.75) { const ms = R(rng, 1, 2.4); out.place(pickFrom(rng, mats), x, y + 0.03, z, rng() * 6.283, ms, 1, ms, c.nrm, 0.9, c.tint(pickFrom(rng, MINERAL), (rng() - 0.5) * 0.25)); }
+    if (r < 0.4) { const ws = R(rng, 0.7, 1.4); out.place(pickFrom(rng, tw), x, y - 0.05, z, rng() * 6.283, ws, ws, ws, c.nrm, 0.3, wormTint()); c.addFlora(FK['tube-worm'], x, y, z, ws); }
+    else if (r < 0.75) { const ms = R(rng, 1, 2.4); out.place(pickFrom(rng, mats), x, y + 0.03, z, rng() * 6.283, ms, 1, ms, c.nrm, 0.9, c.tint(pickFrom(rng, MINERAL), (rng() - 0.5) * 0.25)); c.addFlora(FK['microbial-mat'], x, y, z, ms); }
     else { const s = R(rng, 0.6, 2); const rt = c.tint(0x6b5a4c, (rng() - 0.5) * 0.3); out.place(pickFrom(rng, T.rocks), x, y - s * 0.2, z, rng() * 6.283, s, s, s, c.nrm, 0.3, rt); if (s > 1.3) colliders.push(x, y + s * 0.2, z, s * 0.85, 1); }
   }
 }
@@ -295,13 +311,14 @@ function volcano(f, c, rng) {
 // ------------------------------------------------------------------------------------------------------------ structures
 const asmCache = new Map();
 function assembly(f) {
-  let a = asmCache.get(f.id);
+  const key = f.rare ? f.rare.id : f.id;
+  let a = asmCache.get(key);
   if (a) return a;
-  a = f.type === 'wreck' ? buildWreck(f.odd, { length: f.length, beam: f.beam })
+  a = f.rare ? rareAssembly(f) : f.type === 'wreck' ? buildWreck(f.odd, { length: f.length, beam: f.beam })
     : f.type === 'arch' ? buildArch(f.odd, { span: f.span, height: f.height, thick: f.thick })
       : buildCave(f.odd, { length: f.length, radius: f.radius });
   if (asmCache.size >= 6) asmCache.delete(asmCache.keys().next().value);
-  asmCache.set(f.id, a);
+  asmCache.set(key, a);
   return a;
 }
 function placement(f, M) {
@@ -309,7 +326,7 @@ function placement(f, M) {
     _E.set(f.pitch, f.yaw, f.heel, 'YXZ');
     _Q.setFromEuler(_E);
     // heel about the keel line: rotate then drop so the low side is buried and the hull sits in the pad
-    M.compose(_P.set(f.ox, f.y0 - 0.9, f.oz), _Q, _S);
+    M.compose(_P.set(f.ox, f.y0 - 0.9 + (f.dy || 0), f.oz), _Q, _S);
   } else {
     _E.set(0, f.yaw, 0);
     M.compose(_P.set(f.ox, f.y0, f.oz), _Q.setFromEuler(_E), _S);
@@ -327,24 +344,25 @@ function structure(f, c, rng) {
     for (const k of pc.colliders) { v.set(k[0], k[1], k[2]).applyMatrix4(M); colliders.push(v.x, v.y, v.z, k[3], k[4] ?? 1); }
   }
   // growth on the structure and debris around it, owned by the chunk that holds the spot
-  const growth = f.type === 'wreck' ? 14 : f.type === 'arch' ? 8 : 6;
+  const growth = f.rare ? 34 : f.type === 'wreck' ? 14 : f.type === 'arch' ? 8 : 6;
   for (let i = 0; i < growth; i++) {
     const pc = asm.pieces[Math.floor(rng() * asm.pieces.length)], k = pc.colliders[Math.floor(rng() * pc.colliders.length)];
     if (!k) continue;
     v.set(k[0], k[1] + k[3] * 0.8, k[2]).applyMatrix4(M);
     if (!inChunk(c, v.x, v.z)) continue;
     const s = R(rng, 0.5, 1.1), col = coralColor(c, rng, c.CORAL_TINTS);
-    if (rng() < 0.5) out.place(pickFrom(rng, L.gorgonians), v.x, v.y - 0.2, v.z, rng() * 6.283, s, s, s, [0, 1, 0], 0, col, 1);
-    else out.place(pickFrom(rng, c.T.coral[rng() < 0.5 ? 0 : 5].list), v.x, v.y - 0.1, v.z, rng() * 6.283, s, s, s, [0, 1, 0], 0, col);
+    if (rng() < 0.5) { out.place(pickFrom(rng, L.gorgonians), v.x, v.y - 0.2, v.z, rng() * 6.283, s, s, s, [0, 1, 0], 0, col, 1); c.addFlora(FK['sea-fan'], v.x, v.y - 0.2, v.z, s); }
+    else { const ki = rng() < 0.5 ? 0 : 5; out.place(pickFrom(rng, c.T.coral[ki].list), v.x, v.y - 0.1, v.z, rng() * 6.283, s, s, s, [0, 1, 0], 0, col); c.addFlora(coralKind(ki, _ti), v.x, v.y - 0.1, v.z, s); }
     c.corals.push(v.x, v.y + s * 0.5, v.z);
   }
+  if (f.rare) rareExtras(f, c, asm, M);
   const reach = f.type === 'wreck' ? f.length * 0.5 + 8 : f.type === 'arch' ? f.span * 0.5 + 10 : f.length * 0.5 + 10;
   for (let i = 0; i < 16; i++) {
     const a = rng() * 6.283, d = reach * Math.sqrt(rng()) , x = f.x + Math.cos(a) * d, z = f.z + Math.sin(a) * d;
     if (!inChunk(c, x, z) || c.field.places.orientedW(f, x, z) < 0.3) continue;
     const y = c.ground(x, z), r = rng();
     if (r < 0.5) { const s = R(rng, 0.5, 1.6), rt = c.tint(0x777066, (rng() - 0.5) * 0.3); out.place(pickFrom(rng, c.T.rocks), x, y - s * 0.2, z, rng() * 6.283, s, s, s, c.nrm, 0.3, rt); if (s > 1.3) colliders.push(x, y + s * 0.2, z, s * 0.85, 1); }
-    else { const s = R(rng, 0.8, 1.3); out.place(pickFrom(rng, c.T.grass), x, y - 0.05, z, rng() * 6.283, s, s, s, c.nrm, 0.1, c.tint(pickFrom(rng, c.WEED_TINTS), (rng() - 0.5) * 0.3)); c.weeds.push(x, y, z, 2 * s); }
+    else { const s = R(rng, 0.8, 1.3); out.place(pickFrom(rng, c.T.grass), x, y - 0.05, z, rng() * 6.283, s, s, s, c.nrm, 0.1, c.tint(weedTint(c, rng), (rng() - 0.5) * 0.3)); c.weeds.push(x, y, z, 2 * s); c.addFlora(weedKind('grass', _wi), x, y, z, s); }
   }
 }
 
@@ -367,7 +385,7 @@ function garden(f, c, rng) {
     }
     if (rng() < 0.6) {          // gorgonian or pebbles at the foot
       const a = rng() * 6.283, d = R(rng, 1.5, 3) * s, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d, py = c.ground(px, pz), g = R(rng, 0.7, 1.3);
-      if (rng() < 0.5) out.place(pickFrom(rng, L.gorgonians), px, py - 0.1, pz, rng() * 6.283, g, g, g, c.nrm, 0.1, c.tint(pickFrom(rng, [0xd24c8c, 0xe08a3a, 0xb04ad0, 0xe0d040]), (rng() - 0.5) * 0.2));
+      if (rng() < 0.5) { out.place(pickFrom(rng, L.gorgonians), px, py - 0.1, pz, rng() * 6.283, g, g, g, c.nrm, 0.1, c.tint(pickFrom(rng, [0xd24c8c, 0xe08a3a, 0xb04ad0, 0xe0d040]), (rng() - 0.5) * 0.2)); c.addFlora(FK['sea-fan'], px, py, pz, g); }
       else out.place(pickFrom(rng, c.T.pebbles), px, py - 0.1, pz, rng() * 6.283, g, g * 0.8, g, c.nrm, 0.5, c.tint(0x7a766e, 0));
     }
   }
@@ -388,4 +406,4 @@ function canyon(f, c, rng) {
   }
 }
 
-const DECOR = { bigreef, vent, magma, volcano, cave: structure, arch: structure, wreck: structure, garden, canyon };
+const DECOR = { bigreef, vent, magma, volcano, cave: structure, arch: structure, wreck: structure, garden, canyon, ...rockDecor(LT) };

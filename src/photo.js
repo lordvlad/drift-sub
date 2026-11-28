@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CS } from './terrain.js';
+import { detectFlora } from './encyclopedia/flora-detect.js';
 
 const v = new THREE.Vector3(), tmp = new THREE.Vector3();
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -88,6 +89,7 @@ export function scorePhoto(ctx) {
       }
     }
   }
+  const flora = detectFlora(camera, terrain, field, tanH, occluded);   // encyclopedia flora in frame (src/encyclopedia/flora-detect.js)
   // light rays: replicate the shaft placement of the shader
   let rays = 0; const str = shafts.u.uInt.value;
   if (str > 0.01) {
@@ -192,7 +194,7 @@ export function scorePhoto(ctx) {
     spots: [...seen.values()].filter((e) => e.kind !== 'calf').map((e) => ({
       id: e.sp.id, name: e.sp.name, kind: e.kind, rare: !!e.sp.rare, frac: r2(e.frac), x: r2(e.cx / e.count), y: r2(e.cy / e.count), count: e.count, school: e.count > 3, cent: r2(e.cent / e.count),
     })),
-    calf, phase: ph, depth: Math.round(depth), profile, biome, biomes, landmarks, rays, coral, weed, blur: r2(blur), damage: r2(damage), zoom, fov: Math.round(camera.fov * 10) / 10, lit, strobe: !!strobe, light: r2(lightF),
+    calf, phase: ph, depth: Math.round(depth), profile, biome, biomes, landmarks, flora, rays, coral, weed, blur: r2(blur), damage: r2(damage), zoom, fov: Math.round(camera.fov * 10) / 10, lit, strobe: !!strobe, light: r2(lightF),
   };
   return {
     value, key, species: names, shot,
