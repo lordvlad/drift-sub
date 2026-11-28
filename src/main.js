@@ -19,6 +19,7 @@ import { drawCracks } from './cracks.js';
 import { ib, svg } from './icons.js';
 import { Bestiary } from './bestiary.js';
 import { bus } from './bus.js';
+import { addStyle } from './ui.js';
 import { FEATURES } from './features.js';
 import './groups/deep.js';   // dark-sea species (registers bestiary pages at import time)
 import './groups/pelagic.js';   // open-ocean and cave / wreck species (registers bestiary pages at import time)
@@ -152,9 +153,26 @@ function stepZoom(dir) {
   if (lv.length < 2) return;
   setZoom(dir === 0 ? lv[(i + 1) % lv.length] : lv[Math.min(lv.length - 1, Math.max(0, i + dir))]);
 }
-let snapWait = 0, vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
+let vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
 const vfEl = $('vf');
 const vfCross = $('vfCross');
+// motion gauge: how blurred a shot taken right now would be (the shutter is never blocked)
+const motionGauge = (() => {
+  addStyle(`#vfMotion{position:absolute;right:calc(4.5% + 14px);top:50%;transform:translateY(-50%);width:10px;height:120px;border:1px solid #ffffffaa;border-radius:6px;background:#0b2f4455;overflow:hidden;display:flex;align-items:flex-end}
+#vfMotion i{display:block;width:100%;height:0;border-radius:5px;transition:background .2s}
+#vfMotion::before,#vfMotion::after{content:'';position:absolute;left:0;right:0;border-top:1px solid #ffffff55}#vfMotion::before{top:33%}#vfMotion::after{top:66%}
+#vfMotionIc{position:absolute;right:calc(4.5% + 8px);top:calc(50% + 74px);font-size:11px;opacity:.7;letter-spacing:.06em}`);
+  const box = document.createElement('div'); box.id = 'vfMotion'; box.title = 'Motion: a taller bar means a blurrier shot';
+  const fill = document.createElement('i'); box.appendChild(fill);
+  const lab = document.createElement('div'); lab.id = 'vfMotionIc'; lab.textContent = 'motion';
+  $('vf').append(box, lab);
+  let cur = 0;
+  return { set(b) {
+    cur += (b - cur) * 0.35;
+    fill.style.height = Math.round(Math.min(1, cur) * 100) + '%';
+    fill.style.background = cur < 0.12 ? '#6be3a2' : cur < 0.4 ? '#ffd21f' : '#ff5d4d';
+  } };
+})();
 function setViewfinder(on) {
   if (on === vf || (on && (!started || album.isOpen || shop.isOpen))) return;
   vf = on; document.body.classList.toggle('vf', on); vfEl.hidden = !on;
@@ -441,6 +459,7 @@ function frame(now) {
     const b = motionBlur(camera.fov).amount, cross = vfCross;
     cross.style.transform = b > 0.08 ? `translate(${((Math.random() - 0.5) * b * 8).toFixed(1)}px, ${((Math.random() - 0.5) * b * 8).toFixed(1)}px) scale(${(1 + b * 0.7).toFixed(2)})` : '';
     cross.style.opacity = (1 - 0.5 * b).toFixed(2);
+    motionGauge.set(b);
   }
 
   weather.update(dt);
@@ -449,9 +468,7 @@ function frame(now) {
   snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position);
   audio.update(dt, sub, fauna.whaleLevel);
   if (wantSnap) {
-    // steady the shot: if the sub is still swinging when the shutter is pressed, wait (up to ~0.5 s) for the inertia to die down
-    if (snapWait < 0.5 && vf && motionBlur(vfFovNow || VF_FOV).amount > 0.12) { snapWait += dt; }
-    else { snapWait = 0; wantSnap = false;
+    { wantSnap = false;
     if (started && vf && vfBlend > 0.95 && !snapBusy && !album.isOpen) {
       snapBusy = true; const fl = $('flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
       const shot = captureSnapshot();
