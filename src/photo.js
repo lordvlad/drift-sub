@@ -156,7 +156,9 @@ export function scorePhoto(ctx) {
     for (const f of field.featuresNear(cp.x, cp.z, 220) || []) {
       const d = Math.hypot(f.x - cp.x, (f.y ?? cp.y) - cp.y, f.z - cp.z);
       if (d > 240 || !fr.intersectsSphere(sph.set(v.set(f.x, f.y ?? cp.y, f.z), Math.max(1, f.r || 1)))) continue;
-      landmarks.push({ type: f.type, dist: Math.round(d) });
+      const nd = v.set(f.x, f.y ?? cp.y, f.z).project(camera), rr = Math.max(1, f.r || 1);
+      // x,y: NDC of the landmark centre; frac: its (approximate) apparent height as a fraction of the frame; id: set for named rare landmarks (rare wrecks)
+      landmarks.push({ type: f.type, dist: Math.round(d), x: Math.round(nd.x * 100) / 100, y: Math.round(nd.y * 100) / 100, frac: Math.round(Math.min(2, rr * 2 / Math.max(3, d) / tanH) * 100) / 100, ...(f.id ? { id: f.id } : {}) });
     }
     landmarks.sort((a, b) => a.dist - b.dist); landmarks.length = Math.min(landmarks.length, 6);
   }
