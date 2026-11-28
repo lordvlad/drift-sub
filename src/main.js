@@ -152,7 +152,7 @@ function stepZoom(dir) {
   if (lv.length < 2) return;
   setZoom(dir === 0 ? lv[(i + 1) % lv.length] : lv[Math.min(lv.length - 1, Math.max(0, i + dir))]);
 }
-let vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
+let snapWait = 0, vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
 const vfEl = $('vf');
 const vfCross = $('vfCross');
 function setViewfinder(on) {
@@ -206,14 +206,22 @@ function motionBlur(fovDeg) {
 }
 /** average N shifted / scaled copies of the image: a directional + radial smear on the 2D canvas */
 function smearCanvas(cv, b) {
-  const w = cv.width, h = cv.height, src = document.createElement('canvas'); src.width = w; src.height = h;
+  const w = cv.width, h = cv.height, len = Math.hypot(b.dx * h, b.dy * h) + Math.abs(b.zoom) * w * 0.5;
+  if (len < 2.5) return;                       // sub-pixel shifts only soften the picture: leave it sharp
+  const src = document.createElement('canvas'); src.width = w; src.height = h;
   src.getContext('2d').drawImage(cv, 0, 0);
-  const c = cv.getContext('2d'), N = clamp(Math.ceil((Math.hypot(b.dx, b.dy) * h + Math.abs(b.zoom) * w * 0.5) / 2.5), 5, 40);   // about one copy per 2.5 px of smear
+  const N = clamp(Math.ceil(len / 2.5), 4, 24), c = cv.getContext('2d'), tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+  const tc = tmp.getContext('2d', { willReadFrequently: true }), acc = new Float32Array(w * h * 4);
+  // average in float: summing 8-bit alpha blends instead leaves rounding noise ("grain") in smooth gradients
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1) - 0.5, s = 1 + b.zoom * t;
-    c.save(); c.globalAlpha = 1 / (i + 1); c.translate(w / 2 + b.dx * h * t, h / 2 + b.dy * h * t); c.scale(s, s);
-    c.drawImage(src, -w / 2, -h / 2); c.restore();
+    tc.save(); tc.clearRect(0, 0, w, h); tc.translate(w / 2 + b.dx * h * t, h / 2 + b.dy * h * t); tc.scale(s, s); tc.drawImage(src, -w / 2, -h / 2); tc.restore();
+    const d = tc.getImageData(0, 0, w, h).data;
+    for (let k = 0; k < d.length; k++) acc[k] += d[k];
   }
+  const out = c.createImageData(w, h), o = out.data, inv = 1 / N;
+  for (let k = 0; k < o.length; k++) o[k] = acc[k] * inv + 0.5;
+  c.putImageData(out, 0, 0);
 }
 /** mean luma 0..1 around a point of the (bottom-up) GL pixel buffer, NDC coordinates */
 function lumaSampler(buf, w, h) {
@@ -259,7 +267,7 @@ async function finishSnapshot({ buf, w, h, meta, score, damage, blur }) {
   const img = new ImageData(new Uint8ClampedArray(w * h * 4), w, h), row = w * 4;
   for (let y = 0; y < h; y++) img.data.set(buf.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows are bottom-up
   const cx2 = cv.getContext('2d'); cx2.putImageData(img, 0, 0);
-  if (blur && blur.amount > 0.02) smearCanvas(cv, blur);   // moving sub: smeared picture (priced via score.shot.blur)
+  if (blur && blur.amount > 0.05) smearCanvas(cv, blur);   // moving sub: smeared picture (priced via score.shot.blur)
   drawCracks(cx2, w, h, damage);   // a damaged sub has a cracked lens
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
@@ -269,8 +277,8 @@ async function finishSnapshot({ buf, w, h, meta, score, damage, blur }) {
     (p) => ({ id: p.id, frac: p.frac, crop: () => {
     const ch = Math.min(h, Math.max(h * 0.3, p.frac * h * (p.school ? 3.2 : 1.7))), cw = Math.min(w, ch * 4 / 3);
     const sx = Math.min(w - cw, Math.max(0, (p.x + 1) / 2 * w - cw / 2)), sy = Math.min(h - ch, Math.max(0, (1 - p.y) / 2 * h - ch / 2));
-    const c = document.createElement('canvas'); c.width = 320; c.height = 240; c.getContext('2d').drawImage(cv, sx, sy, cw, ch, 0, 0, 320, 240);
-    return c.toDataURL('image/jpeg', 0.78);
+    const c = document.createElement('canvas'); c.width = 520; c.height = 390; const cc = c.getContext('2d'); cc.imageSmoothingQuality = 'high'; cc.drawImage(cv, sx, sy, cw, ch, 0, 0, 520, 390);
+    return c.toDataURL('image/jpeg', 0.84);
   } })), score.shot);
   try { const rec = { t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species, shot: score.shot };
     await store.add(rec); bus.emit('snapshot', { rec, shot: score.shot, score, zoom: lastShot ? lastShot.zoom : 1 }); const n = (await store.list()).length; albumIcon(n); toast((fresh.length ? fresh.join(' · ') : `Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`) + (rec.commission ? ' · fulfils a commission' : '')); }
@@ -441,13 +449,15 @@ function frame(now) {
   snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position);
   audio.update(dt, sub, fauna.whaleLevel);
   if (wantSnap) {
-    wantSnap = false;
+    // steady the shot: if the sub is still swinging when the shutter is pressed, wait (up to ~0.5 s) for the inertia to die down
+    if (snapWait < 0.5 && vf && motionBlur(vfFovNow || VF_FOV).amount > 0.12) { snapWait += dt; }
+    else { snapWait = 0; wantSnap = false;
     if (started && vf && vfBlend > 0.95 && !snapBusy && !album.isOpen) {
       snapBusy = true; const fl = $('flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
       const shot = captureSnapshot();
       snow.u.uCam.value.copy(camera.position); shafts.u.uCam.value.copy(camera.position); surface.follow(camera.position);
       finishSnapshot(shot).finally(() => { snapBusy = false; });
-    }
+    } }
   }
 
   updateGauge();
@@ -472,7 +482,7 @@ const game = { THREE, scene, camera, renderer, canvas, field, terrain, fauna, su
 window.__game = game;
 for (const f of FEATURES) f.init(game);
 requestAnimationFrame((n) => { last = n; frame(n); });
-window.__sim = {
+window.__sim = { smearCanvas,
   bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed,
   fleet, shop, swapSub, setZoom, stepZoom, snapCam, captureSnapshot, finishSnapshot, motionBlur,
   get zoom() { return zoom; }, get lastShot() { return lastShot; }, get stats() { return fst; },
