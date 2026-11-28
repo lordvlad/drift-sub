@@ -15,6 +15,8 @@ export class Sub {
     this.propPos = new THREE.Vector3(); this.ceil = -2.4; this.limit = 0;
     this.damage = 0; this.depthCap = 60; this.maxDepth = 60; this.stats = { thrust: 1, turn: 1, fragility: 1, lateral: false };
     this.radius = model.radius ?? 0.9; this.latThrottle = 0; this.hurtFlash = 0; this.scrape = 0; this.hitCool = 0; this.hitCount = 0; this.hitSev = 0;
+    /** small handling multipliers earned through the logbook (see features/logbook.js): turn, thrust, bump (hull damage taken), repair (self-repair rate). Each within ±15%. */
+    this.tweaks = { turn: 1, thrust: 1, bump: 1, repair: 1 };
   }
   /** Swap in another submarine model (position, heading and velocity are kept). */
   setModel(model) { this.model = model; this.radius = model.radius ?? 0.9; }
@@ -28,7 +30,7 @@ export class Sub {
   hit(spd, k) {
     if (this.hitCool > 0 || spd < 0.6) return;
     this.hitCool = 0.35;
-    this.damage = Math.min(1, this.damage + 0.03 * Math.pow(spd - 0.4, 1.3) * k * this.stats.fragility);
+    this.damage = Math.min(1, this.damage + 0.03 * Math.pow(spd - 0.4, 1.3) * k * this.stats.fragility * this.tweaks.bump);
     this.hitSev = clamp(spd * k / 5, 0.1, 1); this.hurtFlash = Math.max(this.hurtFlash, 0.4 + this.hitSev * 0.6); this.hitCount++;
     bus.emit('hit', { speed: spd, k });
   }
@@ -42,7 +44,7 @@ export class Sub {
     const sp = this.vel.length();
     const eff = 0.45 + 0.55 * Math.min(1, sp / 4);
     // angular inertia: key torque + mouse impulses, exponential damping
-    const tk = this.stats.turn, mk = Math.sqrt(tk);   // agile subs: stronger torque and higher rate limits (mouse a little less so)
+    const tk = this.stats.turn * this.tweaks.turn, mk = Math.sqrt(tk);   // agile subs: stronger torque and higher rate limits (mouse a little less so)
     this.yawRate += (-input.turn * 2.4 * eff * tk) * dt - input.takeLookX() * 0.0094 * input.sens * mk;
     this.pitchRate += -input.takeLookY() * 0.0094 * input.sens * mk;
     const damp = Math.exp(-dt * 2.6);
@@ -67,7 +69,7 @@ export class Sub {
     const vf = v.dot(f);
     const lx = v.x - f.x * vf, ly = v.y - f.y * vf, lz = v.z - f.z * vf;
     const lm = Math.hypot(lx, ly, lz);
-    const thrust = this.throttle * 5.2 * this.stats.thrust * (input.boost ? 1.6 : 1);
+    const thrust = this.throttle * 5.2 * this.stats.thrust * this.tweaks.thrust * (input.boost ? 1.6 : 1);
     const along = thrust - (0.32 * vf + 0.035 * vf * Math.abs(vf));
     const latK = 1.5 + 0.25 * lm;
     let ax = f.x * along - lx * latK, ay = f.y * along - ly * latK + input.rise * 2.4, az = f.z * along - lz * latK;
@@ -110,7 +112,7 @@ export class Sub {
     this.scrape += ((wc ? 1 : 0) - this.scrape) * (1 - Math.exp(-dt * 4));
     if (wc) this.damage = Math.min(1, this.damage + dt * 0.0028 * (0.4 + this.speed) * Math.min(wc, 4) * this.stats.fragility);
     this.hitCool = Math.max(0, this.hitCool - dt); this.hurtFlash = Math.max(0, this.hurtFlash - dt * 1.6);
-    this.damage = Math.max(0, this.damage - dt / 720);   // slow self-repair: a full wreck mends in about 12 minutes
+    this.damage = Math.max(0, this.damage - dt * this.tweaks.repair / 720);   // slow self-repair: a full wreck mends in about 12 minutes
     this.maxDepth += (this.depthCap * (1 - 0.6 * this.damage) - this.maxDepth) * (1 - Math.exp(-dt * 2));
     // depth limit: pressure wall. Soft push over the last 4 m, hard stop at the sub's depth cap.
     const deep = -this.pos.y - (this.maxDepth - 4);

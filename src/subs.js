@@ -82,21 +82,38 @@ function makeLamps(g, defs) {
   return { spots, beams, lampMat, beamMat };
 }
 
-/** common tail of every model: lamp control, first-person hiding and the contract object */
-function finishModel(g, { prop, disc }, rig, propZ, radius) {
+/**
+ * common tail of every model: lamp control, first-person hiding, cosmetic paint and the contract object.
+ * `paint` lists the materials each cosmetic slot recolours: { base, trim, accent, prop: [MeshStandardMaterial] }.
+ * Contract addition: model.setPaint({ base, trim, accent, lamp, prop }) — each a colour (hex number / CSS string) or null/undefined
+ * to restore that slot's built-in colour; lamp recolours the headlight bulbs, spot lights and beams. Purely cosmetic.
+ */
+const LAMP_DEFAULT = { spot: new THREE.Color(0xdff6ff), bulb: [1, 0.97, 0.8], beam: [0.07, 0.1, 0.12] };
+function finishModel(g, { prop, disc }, rig, propZ, radius, paint = {}) {
   g.rotation.order = 'YXZ';
-  let hidden = false, lampLevel = 0;
+  let hidden = false, lampLevel = 0, tint = LAMP_DEFAULT;
   /** level 0..1 */
   const setLamps = (level) => {
     lampLevel = level;
-    for (const sp of rig.spots) sp.intensity = 38 * level;
-    rig.lampMat.color.setRGB(0.25 + 0.75 * level, 0.25 + 0.72 * level, 0.2 + 0.6 * level);
-    rig.beamMat.color.setRGB(0.07 * level, 0.1 * level, 0.12 * level); for (const b of rig.beams) b.visible = !hidden && level > 0.02;
+    for (const sp of rig.spots) { sp.intensity = 38 * level; sp.color.copy(tint.spot); }
+    const k = 0.25 + 0.75 * level;
+    rig.lampMat.color.setRGB(tint.bulb[0] * k, tint.bulb[1] * k, tint.bulb[2] * k);
+    rig.beamMat.color.setRGB(tint.beam[0] * level, tint.beam[1] * level, tint.beam[2] * level); for (const b of rig.beams) b.visible = !hidden && level > 0.02;
   };
   const bodyMeshes = []; g.traverse((o) => { if (o.isMesh && !rig.beams.includes(o)) bodyMeshes.push(o); });
   /** first-person (viewfinder): hide hull and beams, lights keep shining */
   const setHidden = (h) => { if (h === hidden) return; hidden = h; for (const m of bodyMeshes) m.visible = !h; for (const b of rig.beams) b.visible = !h && lampLevel > 0.02; };
-  return { group: g, prop, disc, setLamps, setHidden, propZ, radius };
+  const orig = new Map(); for (const k of ['base', 'trim', 'accent', 'prop']) for (const m of paint[k] || []) orig.set(m, { c: m.color.clone(), metal: m.metalness });
+  const setPaint = ({ base, trim, accent, lamp, prop: propC } = {}) => {
+    for (const [k, c] of [['base', base], ['trim', trim], ['accent', accent], ['prop', propC]]) for (const m of paint[k] || []) {
+      const o = orig.get(m);
+      if (c == null) { m.color.copy(o.c); m.metalness = o.metal; } else { m.color.set(c); if (k !== 'prop') m.metalness = Math.min(o.metal, 0.2); }   // repainted metal reads as lacquer (no env map: pure metal looks black)
+    }
+    if (lamp == null) tint = LAMP_DEFAULT;
+    else { const c = new THREE.Color(lamp), mx = Math.max(c.r, c.g, c.b, 1e-3); tint = { spot: c, bulb: [c.r / mx, c.g / mx, c.b / mx], beam: [c.r / mx * 0.11, c.g / mx * 0.11, c.b / mx * 0.11] }; }
+    setLamps(lampLevel);
+  };
+  return { group: g, prop, disc, setLamps, setHidden, setPaint, propZ, radius };
 }
 
 function lemonModel() {
@@ -156,35 +173,8 @@ function lemonModel() {
   const disc = new THREE.Mesh(new THREE.CircleGeometry(0.25, 20), new THREE.MeshBasicMaterial({ color: 0xcfeaff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
   disc.position.z = -0.02; prop.add(disc);
   // twin headlights: lamp, spot and soft beam on each side
-  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff6c8 });
-  const beamGeo = new THREE.ConeGeometry(1.7, 14, 18, 1, true); beamGeo.rotateX(-Math.PI / 2); beamGeo.translate(0, 0, 7);
-  { const p = beamGeo.attributes.position, c = new Float32Array(p.count * 3); // bright at the lamp, black (= invisible when additive) at the far rim
-    for (let i = 0; i < p.count; i++) { const t = p.getZ(i) / 14, f = Math.min(1, t / 0.12) * Math.pow(1 - t, 2.5); c[i * 3] = c[i * 3 + 1] = c[i * 3 + 2] = f; }
-    beamGeo.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
-  const beamMat = new THREE.MeshBasicMaterial({ color: 0x000000, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-  const spots = [], beams = [];
-  for (const s of [-1, 1]) {
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), lampMat);
-    lamp.position.set(s * 0.3, -0.14, 1.12); g.add(lamp);
-    const spot = new THREE.SpotLight(0xdff6ff, 0, 60, 0.5, 0.7, 1.2);
-    spot.position.copy(lamp.position);
-    const target = new THREE.Object3D(); target.position.set(s * 0.9, -0.5, 9);
-    g.add(spot); g.add(target); spot.target = target; spots.push(spot);
-    const beam = new THREE.Mesh(beamGeo, beamMat); beam.position.copy(lamp.position); beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), target.position.clone().sub(lamp.position).normalize()); beam.visible = false; g.add(beam); beams.push(beam);
-  }
-  let hidden = false, lampLevel = 0;
-  /** level 0..1 */
-  const setLamps = (level) => {
-    lampLevel = level;
-    for (const sp of spots) sp.intensity = 38 * level;
-    lampMat.color.setRGB(0.25 + 0.75 * level, 0.25 + 0.72 * level, 0.2 + 0.6 * level);
-    beamMat.color.setRGB(0.07 * level, 0.1 * level, 0.12 * level); for (const b of beams) b.visible = !hidden && level > 0.02;
-  };
-  g.rotation.order = 'YXZ';
-  const bodyMeshes = []; g.traverse((o) => { if (o.isMesh && !beams.includes(o)) bodyMeshes.push(o); });
-  /** first-person (viewfinder): hide hull and beams, lights keep shining */
-  const setHidden = (h) => { if (h === hidden) return; hidden = h; for (const m of bodyMeshes) m.visible = !h; for (const b of beams) b.visible = !h && lampLevel > 0.02; };
-  return { group: g, prop, disc, setLamps, setHidden, propZ: -1.78, radius: 0.9 };
+  const rig = makeLamps(g, [-1, 1].map((s) => ({ pos: V(s * 0.3, -0.14, 1.12), target: V(s * 0.9, -0.5, 9) })));
+  return finishModel(g, { prop, disc }, rig, -1.78, 0.9, { base: [yellow], trim: [dark], accent: [red], prop: [bladeMat] });
 }
 
 /** Manta: flat, wide, ray-like sub with swept wing hulls, teal with an orange accent. ~3 m long, ~3 m wide. */
@@ -234,7 +224,7 @@ function mantaModel() {
   const bladeMat = new THREE.MeshStandardMaterial({ color: 0xc9d2da, roughness: 0.3, metalness: 0.6 });
   const { prop, disc } = makeProp(g, { z: -1.44, hubR: 0.05, bladeLen: 0.17, bladeW: 0.07, blades: 3, discR: 0.22, steel, bladeMat });
   const rig = makeLamps(g, lampDefs);
-  return finishModel(g, { prop, disc }, rig, -1.6, 1.15);
+  return finishModel(g, { prop, disc }, rig, -1.6, 1.15, { base: [teal], trim: [deep], accent: [orange], prop: [bladeMat] });
 }
 
 /** Barracuda: long slim torpedo hull, silver/graphite with a red-orange stripe, swept fins, big ducted prop. ~4 m. */
@@ -296,7 +286,7 @@ function barracudaModel() {
   // lamps flush with the nose flanks
   const zl = 1.35, rl = radiusAt(zl);
   const rig = makeLamps(g, [-1, 1].map((s) => ({ pos: V(s * rl * 0.88, -rl * 0.3, zl), target: V(s * 1.0, -0.5, 10) })));
-  return finishModel(g, { prop, disc }, rig, -2.25, 1.25);
+  return finishModel(g, { prop, disc }, rig, -2.25, 1.25, { base: [silver], trim: [graphite, duct.material], accent: [red], prop: [bladeMat] });
 }
 
 /** Squid: deep-diver bathyscaphe — white pressure sphere, orange ballast tanks and belts, thick viewport, manipulator arms. ~3 m. */
@@ -380,5 +370,5 @@ function squidModel() {
     lampDefs.push({ pos: V(s * 0.66, -0.17, 0.93), target: V(s * 1.0, -0.45, 9) });
   }
   const rig = makeLamps(g, lampDefs);
-  return finishModel(g, { prop, disc }, rig, -1.75, 1.3);
+  return finishModel(g, { prop, disc }, rig, -1.75, 1.3, { base: [white], accent: [orange], prop: [bladeMat] });
 }

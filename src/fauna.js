@@ -8,10 +8,21 @@ import { FISH, SHARKS, WHALES, SQUID, GIANT_SQUID, MANTAS, ORCAS, DOLPHINS, pick
 
 const R = (a, b) => a + Math.random() * (b - a);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+/**
+ * Game-wide stealth state, driven by src/features/equipment.js: `noise` multiplies how far animals notice the sub (quiet propeller 0.8 / 0.6);
+ * `lamp` (0..1) is the glare of white lamps in the dark (0 for red light, lamps off, or daylight).
+ */
+export const stealth = { noise: 1, lamp: 0 };
 /** How alarming the sub is at a given distance: grows steeply with its speed, so a slow approach allows close-ups. 0..1 */
 export function alarm(sub, x, y, z, sens = 1) {
-  const r = (3 + Math.pow(sub.speed, 1.4) * 3.2) * sens, d = Math.hypot(x - sub.pos.x, y - sub.pos.y, z - sub.pos.z);
-  return d < r ? 1 - d / r : 0;
+  const dx = x - sub.pos.x, dy = y - sub.pos.y, dz = z - sub.pos.z, d = Math.hypot(dx, dy, dz);
+  const r = (3 + Math.pow(sub.speed, 1.4) * 3.2) * sens * stealth.noise;
+  let f = d < r ? 1 - d / r : 0;
+  if (stealth.lamp > 0.01 && d < 15 && d > 0.01) {   // white headlights mildly startle shy animals caught in the beam (within 15 m, ahead of the sub)
+    const ahead = clamp(((dx * sub.fwd.x + dy * sub.fwd.y + dz * sub.fwd.z) / d - 0.3) / 0.5, 0, 1);
+    f = Math.max(f, 0.4 * stealth.lamp * ahead * (1 - d / 15) * clamp(sens, 0.5, 1.5));
+  }
+  return f;
 }
 /**
  * Flexible swim speed: cruise when calm, sprint toward `burst` when scared. Speed changes with finite acceleration

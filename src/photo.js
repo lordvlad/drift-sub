@@ -20,8 +20,26 @@ function inView(camera, x, y, z, out) {
   return out.z > -1 && out.z < 1 && Math.abs(out.x) < 1 && Math.abs(out.y) < 1 ? out : null;
 }
 
+const PRICE = 3.4;   // pearls for a rarity-1 subject filling ~the frame, well composed, sharp and lit
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+/** How much of the frame a subject of this size (body length / frame height) fills: a speck is worth nothing, a full frame everything. */
+export const fillCurve = (frac) => 1 - Math.exp(-Math.pow(frac / 0.5, 2.2));
+
+/** Composition 0..1 of a subject at NDC (x, y): dead centre scores well, rule-of-thirds power points and thirds lines nearly as well, the frame edge poorly. */
+export function composition(x, y) {
+  const ax = Math.abs(x), ay = Math.abs(y);
+  const centre = 1 - Math.hypot(ax * 0.85, ay) / 1.1;
+  const power = 1 - Math.hypot(ax - 1 / 3, ay - 1 / 3) / 0.5;
+  const line = 1 - Math.abs(ax - 1 / 3) / 0.4;
+  let c = Math.max(centre, 0.92 * power, 0.82 * line * (1 - ay * 0.4));
+  if (ax > 0.88 || ay > 0.88) c *= 0.6;   // cropped by the frame edge
+  return clamp(c, 0, 1);
+}
+
 export function scorePhoto(ctx) {
-  const { camera, fauna, terrain, field, shafts, daylight, depth, damage = 0 } = ctx;
+  const { camera, fauna, terrain, field, shafts, daylight, depth, damage = 0, zoom = 1, blur = 0, profile = null, strobe = false, lamp = null, sampleLuma = null } = ctx;
+  const lit = ctx.lit ?? (lamp ? lamp.level > 0.3 : false);
   camera.updateMatrixWorld(true);
   const cp = camera.position, tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * 2;
   const seen = new Map();
@@ -31,8 +49,9 @@ export function scorePhoto(ctx) {
     const frac = len / d / tanH;
     if (frac < minFrac) return false;
     const n = inView(camera, x, y, z, tmp); if (!n) return false;
-    let e = seen.get(sp.id); if (!e) seen.set(sp.id, e = { sp, kind, count: 0, frac: 0, cent: 0, cx: 0, cy: 0 });
-    e.count++; e.cx += n.x; e.cy += n.y; e.frac = Math.max(e.frac, frac); e.cent += 1 - clamp(Math.hypot(n.x, n.y) / 1.2, 0, 1);
+    let e = seen.get(sp.id); if (!e) seen.set(sp.id, e = { sp, kind, count: 0, frac: 0, cent: 0, cx: 0, cy: 0, x0: 9, x1: -9, y0: 9, y1: -9 });
+    e.count++; e.cx += n.x; e.cy += n.y; e.frac = Math.max(e.frac, frac); e.cent += composition(n.x, n.y);
+    if (n.x < e.x0) e.x0 = n.x; if (n.x > e.x1) e.x1 = n.x; if (n.y < e.y0) e.y0 = n.y; if (n.y > e.y1) e.y1 = n.y;
     return true;
   };
 
@@ -102,27 +121,56 @@ export function scorePhoto(ctx) {
   };
   emit.occluded = (x, y, z) => occluded(field, cp, v.set(x, y, z));
   for (const g of fauna.groups) if (g.sightings) g.sightings(emit);
-  const items = []; let animals = 0; const names = [];
+  // ---- price: skill first (frame fill, composition, sharpness, light), then rarity, group, variety, scenery ----
+  const ph = daylight.phase;
+  const ambient = sampleLuma ? sampleLuma(0, 0, 0.5) : 0.5;   // 9 coarse samples across the whole frame
+  const lightAt = (x, y, frac) => sampleLuma ? 0.3 + 0.7 * smooth(0.05, 0.28, 0.7 * sampleLuma(x, y, clamp(frac * 0.12, 0.008, 0.05)) + 0.3 * ambient) : 1;
+  const sharp = 1 - 0.85 * Math.pow(clamp((blur - 0.06) / 0.94, 0, 1), 0.8);
+  const items = []; let animals = 0, best = 0, qualified = 0, lightSum = 0, lightN = 0; const names = [];
   for (const e of seen.values()) {
     if (e.kind === 'calf') continue;
-    const cent = e.cent / e.count, sizeF = clamp(0.35 + e.frac * 10, 0.35, 2.0), centF = 0.7 + 0.3 * cent;
-    const amt = e.sp.value * (1 + 0.6 * Math.log2(e.count)) * sizeF * centF;
-    animals += amt; names.push(e.sp.name);
-    items.push([`${e.sp.name}${e.count > 1 ? ' ×' + e.count : ''}${e.sp.rare ? ' (rare)' : ''}`, amt]);
+    names.push(e.sp.name);
+    const n = e.count, comp = e.cent / n, over = e.frac > 1.2 ? 1 / (1 + (e.frac - 1.2) * 0.7) : 1;
+    let fill = fillCurve(e.frac);
+    if (n >= 3) {   // a school or pod counts by the area it covers, not by the size of its smallest member
+      const cover = Math.sqrt(Math.max(0, e.x1 - e.x0) * Math.max(0, e.y1 - e.y0)) / 2;
+      fill = Math.max(fill, 0.8 * fillCurve(cover * 0.8) * clamp(Math.log2(n) / 4, 0.25, 1));
+    }
+    fill *= over; best = Math.max(best, fill); if (fill >= 0.12) qualified++;
+    const lightF = lightAt(e.cx / n, e.cy / n, e.frac), centF = 0.55 + 0.45 * comp, groupF = 1 + 0.5 * Math.log2(Math.min(n, 64));
+    const amt = e.sp.value * PRICE * fill * centF * groupF * lightF * sharp;
+    animals += amt; if (fill > 0.05) { lightSum += lightF; lightN++; }
+    items.push([`${e.sp.name}${n > 1 ? ' ×' + n : ''}${e.sp.rare ? ' (rare)' : ''}`, amt]);
   }
-  if (calf) { const amt = w.sp.value * 0.35; animals += amt; items.push(['Mother and calf', amt]); }
-  const types = seen.size - (calf ? 1 : 0);
-  let mult = 1; const notes = [];
-  if (types >= 2) { const m = Math.min(1.5, 1 + 0.12 * (types - 1)); mult *= m; notes.push([`Variety (${types} species)`, m]); }
-  if (animals > 0 && coral > 0) { const m = 1 + 0.35 * Math.min(coral, 16) / 16; mult *= m; notes.push([`Coral backdrop (${coral})`, m]); }
-  let flat = 2; items.unshift(['Seascape', 2]);
-  if (rays > 0) { const a = 6 * Math.min(rays, 5) * rayStr; flat += a; items.push([`Light rays (${rays})`, a]); }
-  if (coral > 0) { const a = 1.5 * Math.min(coral, 16); flat += a; items.push([`Coral (${coral})`, a]); }
-  if (weed > 0) { const a = 0.6 * Math.min(weed, 20); flat += a; items.push([`Seaweed (${weed})`, a]); }
-  let total = (animals + flat);
+  if (calf) { const c = seen.get('calf'), amt = w.sp.value * 0.35 * PRICE * fillCurve(c.frac) * (0.55 + 0.45 * c.cent / c.count) * sharp; animals += amt; items.push(['Mother and calf', amt]); }
+  const lightF = lightN ? lightSum / lightN : 0.3 + 0.7 * smooth(0.05, 0.28, ambient);
+  // scenery is a backdrop: next to nothing on its own, a multiplier behind a well-framed animal
+  let flat = 1; items.unshift(['Seascape', 1]);
+  if (rays > 0) { const a = 0.4 * Math.min(rays, 5) * rayStr; flat += a; items.push([`Light rays (${rays})`, a]); }
+  if (coral > 0) { const a = 0.08 * Math.min(coral, 16); flat += a; items.push([`Coral (${coral})`, a]); }
+  if (weed > 0) { const a = 0.04 * Math.min(weed, 20); flat += a; items.push([`Seaweed (${weed})`, a]); }
+  // visible landmarks (vents, reefs, wrecks ...) from the terrain's feature list
+  const landmarks = [];
+  if (field.featuresNear) {
+    const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)), sph = new THREE.Sphere();
+    for (const f of field.featuresNear(cp.x, cp.z, 220) || []) {
+      const d = Math.hypot(f.x - cp.x, (f.y ?? cp.y) - cp.y, f.z - cp.z);
+      if (d > 240 || !fr.intersectsSphere(sph.set(v.set(f.x, f.y ?? cp.y, f.z), Math.max(1, f.r || 1)))) continue;
+      landmarks.push({ type: f.type, dist: Math.round(d) });
+    }
+    landmarks.sort((a, b) => a.dist - b.dist); landmarks.length = Math.min(landmarks.length, 6);
+  }
+  if (landmarks.length) { const a = 1.5 * Math.min(landmarks.length, 2); flat += a; items.push([`Landmark (${landmarks[0].type})`, a]); }
+  let total = (animals + flat * lightF * sharp), mult = 1; const notes = [];
+  const gate = smooth(0.05, 0.3, best);
+  if (qualified >= 2) { const m = Math.min(1.75, 1 + 0.15 * (qualified - 1)); mult *= m; notes.push([`Variety (${qualified} species)`, m]); }
+  if (gate > 0 && coral > 0) { const m = 1 + 0.3 * gate * Math.min(coral, 16) / 16; mult *= m; notes.push([`Coral backdrop (${coral})`, m]); }
+  if (gate > 0 && rays > 0 && rayStr > 0.1) { const m = 1 + 0.2 * gate * Math.min(rays, 5) / 5 * Math.min(rayStr, 1); mult *= m; notes.push([`Light rays backdrop (${rays})`, m]); }
+  if (gate > 0 && landmarks.length) { const m = 1 + 0.12 * gate * Math.min(landmarks.length, 3); mult *= m; notes.push([`Landmark backdrop (${landmarks[0].type})`, m]); }
   for (const [label, m] of notes) { items.push([label, null, m]); }
   total *= mult;
-  const ph = daylight.phase;
+  if (sharp < 0.97) items.push(['Motion blur', null, sharp]);
+  if (lightF < 0.95) items.push(['Poor light', null, lightF]);
   if (ph === 'morning' || ph === 'dawn' || ph === 'evening') { total *= 1.1; items.push(['Golden hour', null, 1.1]); }
   if (depth >= 40) { total *= 1.1; items.push(['Deep dive', null, 1.1]); }
   if (damage > 0.04) { const m = Math.max(0.15, 1 - 1.8 * damage); total *= m; items.push(['Cracked lens', null, m]); }
@@ -134,8 +182,18 @@ export function scorePhoto(ctx) {
   parts.push(`c${coral ? 1 + Math.min(2, Math.floor(coral / 6)) : 0}`, `r${rays ? 1 : 0}`, `d${Math.floor(depth / 15)}`, ph === 'night' ? 'n' : ph === 'day' ? 'd' : 'g');
   let h = 5381; const sig = parts.join('|'); for (let i = 0; i < sig.length; i++) h = ((h * 33) ^ sig.charCodeAt(i)) >>> 0;
   const key = 'k' + h.toString(36);
+  // ---- shot descriptor (JSON-small, consumed by commissions / bestiary stars / logbook) ----
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const bw = field.biomeAt ? field.biomeAt(cp.x, cp.z) : null, biomes = {}; let biome = 'open', bmax = -1;
+  if (bw) for (const k in bw) { if (bw[k] > bmax) { bmax = bw[k]; biome = k; } if (bw[k] > 0.05) biomes[k] = r2(bw[k]); }
+  const shot = {
+    spots: [...seen.values()].filter((e) => e.kind !== 'calf').map((e) => ({
+      id: e.sp.id, name: e.sp.name, kind: e.kind, rare: !!e.sp.rare, frac: r2(e.frac), x: r2(e.cx / e.count), y: r2(e.cy / e.count), count: e.count, school: e.count > 3, cent: r2(e.cent / e.count),
+    })),
+    calf, phase: ph, depth: Math.round(depth), profile, biome, biomes, landmarks, rays, coral, weed, blur: r2(blur), damage: r2(damage), zoom, fov: Math.round(camera.fov * 10) / 10, lit, strobe: !!strobe, light: r2(lightF),
+  };
   return {
-    value, key, species: names,
+    value, key, species: names, shot,
     spots: [...seen.values()].filter((e) => e.kind !== 'calf').map((e) => ({ id: e.sp.id, x: e.cx / e.count, y: e.cy / e.count, frac: e.frac, school: e.count > 3 })),
     items: items.map(([label, amt, m]) => m ? [label, '×' + m.toFixed(2)] : [label, '+' + Math.round(amt)]),
   };

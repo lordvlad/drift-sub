@@ -1,5 +1,6 @@
 import { ib } from './icons.js';
-import { SUBS, SUB_IDS, ITEMS, ITEM } from './fleet.js';
+import { addStyle } from './ui.js';
+import { SUBS, SUB_IDS, ITEMS, ITEM, GROUPS, PRICE_MULT } from './fleet.js';
 
 const fmt = (n) => n.toLocaleString('en-US');
 
@@ -7,6 +8,7 @@ const fmt = (n) => n.toLocaleString('en-US');
 export class ShopUI {
   constructor(fleet, wallet, { toast, onSwitch }) {
     this.fleet = fleet; this.wallet = wallet; this.toast = toast; this.onSwitch = onSwitch;
+    addStyle('#shopBody h3.sgroup{margin:16px 0 6px;font-weight:500;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#9fe3ff;opacity:.85}');
     const $ = (id) => document.getElementById(id);
     this.root = $('shop'); this.body = $('shopBody'); this.coins = $('shopCoins');
     ib($('shopClose'), 'close', 'Close shop');
@@ -38,22 +40,28 @@ export class ShopUI {
     const active = SUBS[fleet.active];
 
     const h1 = document.createElement('h2'); h1.textContent = `Upgrades · ${active.name}`; body.appendChild(h1);
-    const note = document.createElement('p'); note.className = 'snote'; note.textContent = 'Upgrades are fitted to this submarine only; they do not move to another sub.'; body.appendChild(note);
-    for (const it of ITEMS) {
-      const owned = !it.consumable && fleet.has(it.id), why = fleet.itemBlock(it.id, wallet);
-      let state = '', btn;
-      if (owned) { btn = this._btn('Owned ✓', 'sbtn owned', true); }
-      else {
-        if (why.startsWith('needs')) state = `Requires ${ITEM[it.requires].name}`;
-        else if (why === 'undamaged') state = 'Hull is undamaged';
-        else if (it.id === 'repair') state = `Hull damage ${Math.round(fleet.damageOf() * 100)}%`;
-        btn = this._btn(`◎ ${fmt(it.price)}`, 'sbtn buy', !!why, () => {
-          const r = fleet.buyItem(it.id, wallet);
-          if (r.ok) this.toast(it.consumable ? `Hull repaired · ◎ ${fmt(it.price)}` : `${it.name} fitted · ◎ ${fmt(it.price)}`);
-          this.render();
-        });
+    const note = document.createElement('p'); note.className = 'snote';
+    const mult = PRICE_MULT[fleet.active] || 1;
+    note.textContent = 'Upgrades are fitted to this submarine only; they do not move to another sub (album expansions are the exception: they apply to the whole album).' + (mult !== 1 ? ` Everything on the ${active.name} costs ×${mult} (consumables too).` : '');
+    body.appendChild(note);
+    for (const group of GROUPS) {
+      const gh = document.createElement('h3'); gh.className = 'sgroup'; gh.textContent = group; body.appendChild(gh);
+      for (const it of ITEMS.filter((i) => i.group === group)) {
+        const owned = !it.consumable && fleet.has(it.id), why = fleet.itemBlock(it.id, wallet), price = fleet.priceOf(it.id);
+        let state = '', btn;
+        if (owned) { btn = this._btn('Owned ✓', 'sbtn owned', true); }
+        else {
+          if (why.startsWith('needs')) state = `Requires ${ITEM[it.requires].name}`;
+          else if (why === 'undamaged') state = 'Hull is undamaged';
+          else if (it.id === 'repair') state = `Hull damage ${Math.round(fleet.damageOf() * 100)}%`;
+          btn = this._btn(`◎ ${fmt(price)}`, 'sbtn buy', !!why, () => {
+            const r = fleet.buyItem(it.id, wallet);
+            if (r.ok) this.toast(it.consumable ? `Hull repaired · ◎ ${fmt(r.price)}` : `${it.name} fitted · ◎ ${fmt(r.price)}`);
+            this.render();
+          });
+        }
+        body.appendChild(this._row(it.name, it.effect, state || (owned && it.shared ? 'Applies to all submarines' : ''), btn));
       }
-      body.appendChild(this._row(it.name, it.effect, state, btn));
     }
 
     const h2 = document.createElement('h2'); h2.textContent = 'Submarines'; body.appendChild(h2);

@@ -20,6 +20,8 @@ import { ib, svg } from './icons.js';
 import { Bestiary } from './bestiary.js';
 import { bus } from './bus.js';
 import { FEATURES } from './features.js';
+import './groups/deep.js';   // dark-sea species (registers bestiary pages at import time)
+import './groups/pelagic.js';   // open-ocean and cave / wreck species (registers bestiary pages at import time)
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -48,6 +50,7 @@ const field = createField(seed);
 const templates = buildTemplates();
 const terrain = new Terrain(scene, field, templates, seed, makeTerrainMaterial(), makeDecorMaterial());
 const fleet = new Fleet();
+field.setProfile(fleet.active);   // the world is shaped for the active submarine kind (see biomes.js; swaps handled in features/places.js)
 const models = {};   // one 3D model per sub, built on first use; only the active one is in the scene
 const modelOf = (id) => models[id] ||= createSubModel(id);
 let subModel = modelOf(fleet.active); scene.add(subModel.group);
@@ -98,9 +101,10 @@ $('waveBtn').addEventListener('click', (e) => { weather.cycle(); say(`waves ${wa
 weather.onChange();
 const daylight = new Daylight(() => { const ph = daylight.phase; ib($('timeBtn'), { night: 'moon', dawn: 'sunrise', morning: 'sunrise', day: 'sun', evening: 'sunset' }[ph], daylight.mode === 'auto' ? `Time: auto (${ph}, your clock). Click to override` : `Time: ${daylight.mode}. Click to change`); });
 daylight.onChange();
-const LAMP_MODES = ['auto', 'on', 'off']; let lampMode = 'auto', lampLevel = 0;
-const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`); };
-const cycleLamps = () => { if (!fst.hasLamp) return; lampMode = LAMP_MODES[(LAMP_MODES.indexOf(lampMode) + 1) % 3]; lampLabel(); say(`lamps ${lampMode}`); };
+let lampMode = 'auto', lampLevel = 0;
+const lampModes = () => fst.redLight ? ['auto', 'on', 'red', 'off'] : ['auto', 'on', 'off'];   // red-light filter adds a mode (equipment feature)
+const lampLabel = () => { for (const id of ['lampBtn', 'vfLamp']) ib($(id), lampMode === 'on' ? 'lampOn' : lampMode === 'red' ? 'lampRed' : lampMode === 'off' ? 'lampOff' : 'lamp', `Lamps: ${lampMode} (F)`); };
+const cycleLamps = () => { if (!fst.hasLamp) return; const m = lampModes(); lampMode = m[(m.indexOf(lampMode) + 1) % m.length]; lampLabel(); say(`lamps ${lampMode}`); };
 lampLabel();
 $('timeBtn').addEventListener('click', (e) => { daylight.cycle(); say(`time ${timeLabel()}`); e.currentTarget.blur(); });
 $('lampBtn').addEventListener('click', (e) => { cycleLamps(); e.currentTarget.blur(); });
@@ -120,7 +124,7 @@ if (params.has('waves')) weather.setMode(params.get('waves')); else if (params.h
 const store = new Store(), wallet = new Wallet();
 const toastEl = $('toast'); let toastT = 0;
 function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
-const bestiary = new Bestiary((n) => ib($('bookBtn'), 'book', `Bestiary (${n} pages)`));
+const bestiary = new Bestiary((n) => ib($('bookBtn'), 'book', `Bestiary (${n} pages)`), wallet);
 $('bookBtn').addEventListener('click', (e) => { setViewfinder(false); bestiary.open(); e.currentTarget.blur(); });
 const album = new AlbumUI(store, wallet, (n) => albumIcon(n), toast);
 const albumIcon = (n) => { ib($('albumBtn'), 'album', `Album (${n})`); ib($('vfAlbum'), 'album', `Album (${n})`); };
@@ -150,6 +154,7 @@ function stepZoom(dir) {
 }
 let vf = false, vfBlend = 0, wantSnap = false, rt = null, snapBusy = false;
 const vfEl = $('vf');
+const vfCross = $('vfCross');
 function setViewfinder(on) {
   if (on === vf || (on && (!started || album.isOpen || shop.isOpen))) return;
   vf = on; document.body.classList.toggle('vf', on); vfEl.hidden = !on;
@@ -189,6 +194,38 @@ function vfPose(pos, quat) {
   quat.setFromEuler(_eul.set(-sub.pitch, sub.yaw, 0)).multiply(q180);
 }
 const blobOf = (cv, q) => new Promise((res) => cv.toBlob(res, 'image/jpeg', q));
+/** Motion blur of a shot taken right now: amount 0..1 (prices the shot) plus the smear vector in frame heights (dx, dy) and radial scale. */
+function motionBlur(fovDeg) {
+  const fovR = THREE.MathUtils.degToRad(fovDeg), ex = 0.05 / fovR, v = sub.vel;   // ~1/20 s exposure; narrow lenses (zoom) magnify every shake
+  const lat = v.x * -Math.cos(sub.yaw) + v.z * Math.sin(sub.yaw);
+  let dx = (sub.yawRate - lat / 12) * ex, dy = (sub.pitchRate + v.y / 12) * ex;   // scene moves opposite to the sub; nearby subject ~12 m
+  const sp = clamp((sub.speed - 0.5) / 6, 0, 1), len = Math.hypot(dx, dy);
+  const raw = Math.hypot(len / 0.04, sp * 0.9), amount = clamp((raw - 0.08) / 0.92, 0, 1);
+  const k = len > 1e-6 ? Math.min(0.08, len * 1.2 + sp * 0.02) / len : 0;
+  return { amount, dx: dx * k, dy: dy * k, zoom: clamp(sub.vf * 0.012, -0.05, 0.06) * (amount > 0 ? 1 : 0) };
+}
+/** average N shifted / scaled copies of the image: a directional + radial smear on the 2D canvas */
+function smearCanvas(cv, b) {
+  const w = cv.width, h = cv.height, src = document.createElement('canvas'); src.width = w; src.height = h;
+  src.getContext('2d').drawImage(cv, 0, 0);
+  const c = cv.getContext('2d'), N = clamp(Math.ceil((Math.hypot(b.dx, b.dy) * h + Math.abs(b.zoom) * w * 0.5) / 2.5), 5, 40);   // about one copy per 2.5 px of smear
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1) - 0.5, s = 1 + b.zoom * t;
+    c.save(); c.globalAlpha = 1 / (i + 1); c.translate(w / 2 + b.dx * h * t, h / 2 + b.dy * h * t); c.scale(s, s);
+    c.drawImage(src, -w / 2, -h / 2); c.restore();
+  }
+}
+/** mean luma 0..1 around a point of the (bottom-up) GL pixel buffer, NDC coordinates */
+function lumaSampler(buf, w, h) {
+  return (nx, ny, rad = 0.02) => {
+    let s = 0, n = 0;
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      const px = Math.round(clamp((nx + i * rad + 1) / 2, 0, 1) * (w - 1)), py = Math.round(clamp((ny + j * rad + 1) / 2, 0, 1) * (h - 1)), o = (py * w + px) * 4;
+      s += 0.2126 * buf[o] + 0.7152 * buf[o + 1] + 0.0722 * buf[o + 2]; n++;
+    }
+    return s / n / 255;
+  };
+}
 function captureSnapshot() {
   const maxSide = input.coarse ? 1440 : 1920, asp = innerWidth / innerHeight;
   const w = asp >= 1 ? maxSide : Math.round(maxSide * asp), h = asp >= 1 ? Math.round(maxSide / asp) : maxSide;
@@ -205,19 +242,24 @@ function captureSnapshot() {
   const ps = (h * 0.5) / Math.tan(THREE.MathUtils.degToRad(snapCam.fov) / 2), oldB = bubbles.uScale.value, oldS = snow.u.uScale.value;
   bubbles.uScale.value = ps; snow.u.uScale.value = ps;
   snow.u.uCam.value.copy(snapCam.position); shafts.u.uCam.value.copy(snapCam.position); surface.follow(snapCam.position);
+  const flags = { strobe: false }; bus.emit('capture', { phase: 'before', cam: snapCam, flags });
   renderer.setRenderTarget(rt); renderer.render(scene, snapCam); renderer.setRenderTarget(null);
+  bus.emit('capture', { phase: 'after' });
   for (const o of hidden) o.visible = true;
   bubbles.uScale.value = oldB; snow.u.uScale.value = oldS;
   const buf = new Uint8Array(w * h * 4); renderer.readRenderTargetPixels(rt, 0, 0, w, h, buf);
   const meta = `${(-sub.pos.y).toFixed(0)} m deep · ${daylight.phase} · ${weather.state} seas`;
-  const damage = sub.damage, score = scorePhoto({ camera: snapCam, fauna, terrain, field, shafts, daylight, depth: -sub.pos.y, damage });
-  return { buf, w, h, meta, score, damage };
+  const blur = motionBlur(snapCam.fov), damage = sub.damage;
+  const score = scorePhoto({ camera: snapCam, fauna, terrain, field, shafts, daylight, depth: -sub.pos.y, damage, zoom, blur: blur.amount, profile: fleet.active,
+    lit: lampLevel > 0.3, lamp: { level: lampLevel, mode: lampMode }, strobe: flags.strobe, sampleLuma: lumaSampler(buf, w, h) });
+  return { buf, w, h, meta, score, damage, blur };
 }
-async function finishSnapshot({ buf, w, h, meta, score, damage }) {
+async function finishSnapshot({ buf, w, h, meta, score, damage, blur }) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const img = new ImageData(new Uint8ClampedArray(w * h * 4), w, h), row = w * 4;
   for (let y = 0; y < h; y++) img.data.set(buf.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows are bottom-up
   const cx2 = cv.getContext('2d'); cx2.putImageData(img, 0, 0);
+  if (blur && blur.amount > 0.02) smearCanvas(cv, blur);   // moving sub: smeared picture (priced via score.shot.blur)
   drawCracks(cx2, w, h, damage);   // a damaged sub has a cracked lens
   const tw = 320, th = Math.round(320 * h / w), tc = document.createElement('canvas'); tc.width = tw; tc.height = th;
   tc.getContext('2d').drawImage(cv, 0, 0, tw, th);
@@ -229,9 +271,9 @@ async function finishSnapshot({ buf, w, h, meta, score, damage }) {
     const sx = Math.min(w - cw, Math.max(0, (p.x + 1) / 2 * w - cw / 2)), sy = Math.min(h - ch, Math.max(0, (1 - p.y) / 2 * h - ch / 2));
     const c = document.createElement('canvas'); c.width = 320; c.height = 240; c.getContext('2d').drawImage(cv, sx, sy, cw, ch, 0, 0, 320, 240);
     return c.toDataURL('image/jpeg', 0.78);
-  } })));
+  } })), score.shot);
   try { const rec = { t: Date.now(), full, thumb, meta, value: score.value, key: score.key, items: score.items, species: score.species, shot: score.shot };
-    await store.add(rec); bus.emit('snapshot', { rec, shot: score.shot, score, zoom: lastShot ? lastShot.zoom : 1 }); const n = (await store.list()).length; albumIcon(n); toast(fresh.length ? `New bestiary page: ${fresh.join(', ')}` : `Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`); }
+    await store.add(rec); bus.emit('snapshot', { rec, shot: score.shot, score, zoom: lastShot ? lastShot.zoom : 1 }); const n = (await store.list()).length; albumIcon(n); toast((fresh.length ? fresh.join(' · ') : `Snapshot saved${score.species.length ? ' · ' + score.species.slice(0, 3).join(', ') : ''} · ${n} / ${MAX_SHOTS}`) + (rec.commission ? ' · fulfils a commission' : '')); }
   catch { toast('Could not save snapshot (storage full?)'); }
 }
 
@@ -267,7 +309,7 @@ function updateWater(camY, dt) {
   scene.fog.density = 0.0125 + 0.003 * k;
   hemi.intensity = L.hemiI * W.dim * (1 - 0.55 * k); hemi.color.copy(L.sky).lerp(tmpC, 0.2);
   sun.intensity = L.sunI * W.dim * (1 - 0.8 * k); sun.color.copy(L.sun);
-  const lampTarget = !fst.hasLamp ? 0 : lampMode === 'on' ? 1 : lampMode === 'off' ? 0 : clamp(k * 1.5 - 0.1 + daylight.darkness * 1.3, 0, 1);
+  const lampTarget = !fst.hasLamp ? 0 : lampMode === 'on' || lampMode === 'red' ? 1 : lampMode === 'off' ? 0 : clamp(k * 1.5 - 0.1 + daylight.darkness * 1.3, 0, 1);
   lampLevel += (lampTarget - lampLevel) * (1 - Math.exp(-dt * 3)); subModel.setLamps(lampLevel);
   surface.u.uFog.value.copy(tmpC); surface.u.uDensity.value = scene.fog.density;
   shafts.u.uInt.value = L.shaft * (1 - 0.75 * k) * (W.dim < 0.7 ? 0.5 : 1) * (1 + W.gust * 0.3);
@@ -305,6 +347,7 @@ function applyFleet() {
   fst = fleet.stats(); sub.setStats(fst);
   if (fst.maxDepth !== gaugeMax) buildGauge(fst.maxDepth);
   input.setLateral(fst.lateral);
+  if (lampMode === 'red' && !fst.redLight) { lampMode = 'on'; lampLabel(); }
   for (const id of ['lampBtn', 'vfLamp']) $(id).hidden = !fst.hasLamp;   // no flashlight yet: no lamp buttons, F does nothing
   $('vfZoom').hidden = fst.zoomLevels.length < 2; if (!fst.zoomLevels.includes(zoom)) zoom = 1; zoomLabel();
   $('swapBtn').hidden = fleet.owned.length < 2;
@@ -386,6 +429,11 @@ function frame(now) {
   vfFovNow += (zoomFov(zoom) - vfFovNow) * (1 - Math.exp(-dt * 10));
   const fov = baseFov + (vfFovNow - baseFov) * vfBlend;
   if (Math.abs(fov - camera.fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  if (vf) {   // blur-risk hint: the crosshair ring trembles and widens while the shot would come out smeared
+    const b = motionBlur(camera.fov).amount, cross = vfCross;
+    cross.style.transform = b > 0.08 ? `translate(${((Math.random() - 0.5) * b * 8).toFixed(1)}px, ${((Math.random() - 0.5) * b * 8).toFixed(1)}px) scale(${(1 + b * 0.7).toFixed(2)})` : '';
+    cross.style.opacity = (1 - 0.5 * b).toFixed(2);
+  }
 
   weather.update(dt);
   updateWater(camera.position.y, dt);
@@ -409,7 +457,7 @@ function frame(now) {
   hurtEl.style.opacity = (glow * (sub.damage > 0.4 ? 0.9 + 0.1 * Math.sin(t * 2.4) : 1)).toFixed(3);
   if (sub.hurtFlash > 0.02) { const k = sub.hurtFlash * sub.hurtFlash * 0.12; camera.position.x += (Math.random() - 0.5) * k; camera.position.y += (Math.random() - 0.5) * k; }
   if (vf) { const q = Math.round(sub.damage * 100) + ':' + innerWidth + 'x' + innerHeight; if (q !== crackKey) { crackKey = q; const c = $('vfCracks'); c.width = innerWidth; c.height = innerHeight; drawCracks(c.getContext('2d'), c.width, c.height, sub.damage); } }
-  if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}${zoom > 1 ? ` · ${zoom}×` : ''}`; }
+  if (vf) { $('vfDepth').textContent = `${(-sub.pos.y).toFixed(0)} m · ${daylight.phase}${zoom !== 1 ? ` · ${zoom}×` : ''}`; }
   $('speed').textContent = `speed ${(sub.speed * 1.94).toFixed(1)} kn`;
   bus.emit('frame', { dt, t });
   for (const f of FEATURES) if (f.update) f.update(dt, game);
@@ -419,13 +467,14 @@ const idleInput = { thrust: 0, turn: 0, rise: 0, boost: false, sens: 0, takeLook
 resize(); addEventListener('resize', resize);
 // plug-in features (src/features.js) get the whole game state
 const game = { THREE, scene, camera, renderer, canvas, field, terrain, fauna, sub, fleet, wallet, album, store, bestiary, daylight, weather, audio, input,
-  bubbles, snow, shafts, surface, say, toast, bus, params, get subModel() { return subModel; }, get viewfinder() { return vf; }, get zoom() { return zoom; } };
+  bubbles, snow, shafts, surface, say, toast, bus, params, get subModel() { return subModel; }, get viewfinder() { return vf; }, get zoom() { return zoom; },
+  get lampLevel() { return lampLevel; }, get lampMode() { return lampMode; } };
 window.__game = game;
 for (const f of FEATURES) f.init(game);
 requestAnimationFrame((n) => { last = n; frame(n); });
 window.__sim = {
   bestiary, drawCracks, setViewfinder, scorePhoto, album, wallet, store, weather, sub, fauna, terrain, field, camera, scene, input, renderer, seed,
-  fleet, shop, swapSub, setZoom, stepZoom, snapCam,
+  fleet, shop, swapSub, setZoom, stepZoom, snapCam, captureSnapshot, finishSnapshot, motionBlur,
   get zoom() { return zoom; }, get lastShot() { return lastShot; }, get stats() { return fst; },
 };
 

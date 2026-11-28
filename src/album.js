@@ -2,7 +2,9 @@ import { ib } from './icons.js';
 import { bus } from './bus.js';
 
 const DB = 'drift-album', ST = 'shots';
-export const MAX_SHOTS = 100;
+/** Album capacity (live binding): 100 plus the album expansions owned; set through setMaxShots() by the equipment feature. */
+export let MAX_SHOTS = 100;
+export const setMaxShots = (n) => { MAX_SHOTS = Math.max(1, n | 0); };
 
 /** Snapshot storage: IndexedDB (falls back to memory when unavailable). Oldest shots are dropped beyond MAX_SHOTS. */
 export class Store {
@@ -31,13 +33,19 @@ export class Store {
   async add(rec) {
     await this.ready;
     if (!this.db) { rec.id = this.nextId++; this.mem.push(rec); while (this.mem.length > MAX_SHOTS) this.mem.shift(); return; }
-    await this._req('readwrite', (s) => s.add(rec));
+    rec.id = await this._req('readwrite', (s) => s.add(rec));
     const keys = await this._req('readonly', (s) => s.getAllKeys());
     if (keys.length > MAX_SHOTS) await this._req('readwrite', (s) => { for (const k of keys.slice(0, keys.length - MAX_SHOTS)) s.delete(k); });
   }
   async remove(id) {
     await this.ready;
     if (!this.db) this.mem = this.mem.filter((r) => r.id !== id); else await this._req('readwrite', (s) => s.delete(id));
+  }
+  /** Persist changes to an already stored record (needs rec.id). */
+  async update(rec) {
+    await this.ready;
+    if (rec.id == null) return;
+    if (!this.db) { const i = this.mem.findIndex((r) => r.id === rec.id); if (i >= 0) this.mem[i] = rec; } else await this._req('readwrite', (s) => s.put(rec));
   }
 }
 
@@ -119,6 +127,7 @@ export class AlbumUI {
     this.fullUrl = URL.createObjectURL(rec.full); this.img.src = this.fullUrl;
     this.cap.textContent = `${new Date(rec.t).toLocaleString()} · ${rec.meta || ''}`;
     this.viewer.hidden = false;
+    bus.emit('album:view', { rec, bar: document.getElementById('viewBar'), before: this.sellBtn });   // lets features (gallery Pin) add viewer buttons
   }
   closeViewer() { this.viewer.hidden = true; this.img.removeAttribute('src'); if (this.fullUrl) { URL.revokeObjectURL(this.fullUrl); this.fullUrl = null; } }
   updateCoins() {
@@ -126,11 +135,12 @@ export class AlbumUI {
   }
   async sell() {
     const rec = this.items[this.cur]; if (!rec) return;
-    const v = this.wallet.price(rec); this.wallet.add(v); this.wallet.markSold(rec.key); await this.store.remove(rec.id);
+    const bonus = rec.bonus || 0, v = this.wallet.price(rec) + bonus;   // bonus: commission payment attached to this snapshot (src/features/commissions.js)
+    this.wallet.add(v); this.wallet.markSold(rec.key); await this.store.remove(rec.id);
     const next = Math.min(this.cur, this.items.length - 2);
     await this.refresh(); next >= 0 ? this.show(next) : this.closeViewer();
-    this.say(`Sold for ◎ ${v} · ${this.wallet.n} pearls`);
-    bus.emit('sold', { rec, price: v });
+    this.say(`Sold for ◎ ${v}${bonus ? ` (commission bonus ◎ ${bonus})` : ''} · ${this.wallet.n} pearls`);
+    bus.emit('sold', { rec, price: v, bonus });
   }
   async del() {
     const rec = this.items[this.cur]; if (!rec) return;

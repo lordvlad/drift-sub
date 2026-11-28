@@ -15,12 +15,12 @@ float causticPat(vec2 uv, float t){
   return pow(abs(c), 8.0);
 }`;
 
-function patch(mat, { sway, caustics }) {
+function patch(mat, { sway, caustics, glow }) {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = shared.uTime; shader.uniforms.uSwayK = shared.uSwayK;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nuniform float uTime, uSwayK;\nvarying vec3 vWPos;\n${sway ? 'attribute float aSway;' : ''}`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
+      .replace('#include <common>', `#include <common>\nuniform float uTime, uSwayK;\nvarying vec3 vWPos;\n${sway ? 'attribute float aSway;' : ''}${glow ? '\nattribute float aGlow;\nvarying float vGlow;' : ''}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>${glow ? '\nvGlow = aGlow;' : ''}
 ${sway ? `{
   vec3 wp = (modelMatrix * vec4(transformed, 1.0)).xyz;
   float ph = wp.x * 0.21 + wp.z * 0.13;
@@ -29,21 +29,28 @@ ${sway ? `{
 }` : ''}`)
       .replace('#include <project_vertex>', `#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float uTime;\nvarying vec3 vWPos;\n${CAUSTIC}`)
+      .replace('#include <common>', `#include <common>\nuniform float uTime;\nvarying vec3 vWPos;\n${glow ? 'varying float vGlow;\n' : ''}${CAUSTIC}`)
       .replace('#include <opaque_fragment>', `
 ${caustics ? `{
   float cp = causticPat(vWPos.xz * 0.045, uTime * 0.5 + 23.0);
   float fade = exp(vWPos.y * 0.045);
   outgoingLight += outgoingLight * cp * 2.2 * fade + vec3(0.5,0.8,1.0) * cp * 0.25 * fade;
 }` : ''}
+${glow ? `if (vGlow > 0.003) {
+  // lava / hot rock: warm emission that survives darkness, slowly pulsing
+  float pulse = 0.84 + 0.16 * sin(uTime * 1.3 + vWPos.x * 0.35 + vWPos.z * 0.27) + 0.07 * sin(uTime * 3.1 + vWPos.z * 0.8 - vWPos.x * 0.5);
+  float g = clamp(vGlow, 0.0, 1.4) * pulse;
+  vec3 hot = mix(vec3(0.9, 0.16, 0.02), vec3(1.0, 0.56, 0.12), clamp(g * g, 0.0, 1.0));
+  outgoingLight += hot * g * 1.25;
+}` : ''}
 #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => `m${sway ? 's' : ''}${caustics ? 'c' : ''}`;
+  mat.customProgramCacheKey = () => `m${sway ? 's' : ''}${caustics ? 'c' : ''}${glow ? 'g' : ''}`;
   return mat;
 }
 
-export const makeTerrainMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true }), { caustics: true });
-export const makeDecorMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { sway: true, caustics: true });
+export const makeTerrainMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true }), { caustics: true, glow: true });
+export const makeDecorMaterial = () => patch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { sway: true, caustics: true, glow: true });
 
 /** Creature material: tail sway along z. axis (1,0,0) = side-to-side, (0,1,0) = up-down. */
 /** mode 'tail' (default): travelling body wave toward the tail; 'flap': wings beat up/down, growing toward the tips (manta). */

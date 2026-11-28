@@ -1,6 +1,6 @@
 /** Soft generative underwater ambience: brown-noise wash, slow pad, engine hum, distant whale song. */
 export class Audio {
-  constructor() { this.ctx = null; this.muted = false; this.whaleT = 0; }
+  constructor() { this.ctx = null; this.muted = false; this.whaleT = 0; this.noise = 1; }   // noise: the active sub's noise factor (quiet propeller 0.8 / 0.6, set by the equipment feature)
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -29,11 +29,22 @@ export class Audio {
   update(dt, sub, whaleLevel) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime, w = Math.abs(sub.omega);
+    const quiet = Math.pow(this.noise, 2.5);   // a quiet propeller hums softer and duller
     this.eng.frequency.setTargetAtTime(38 + w * 1.6, t, 0.2);
-    this.engF.frequency.setTargetAtTime(120 + w * 6, t, 0.2);
-    this.engG.gain.setTargetAtTime(Math.min(0.05, w * 0.0022), t, 0.2);
+    this.engF.frequency.setTargetAtTime((120 + w * 6) * (0.6 + 0.4 * this.noise), t, 0.2);
+    this.engG.gain.setTargetAtTime(Math.min(0.05, w * 0.0022) * quiet, t, 0.2);
     this.whaleT -= dt;
     if (whaleLevel > 0.03 && this.whaleT <= 0) { this.whaleCall(whaleLevel); this.whaleT = 9 + Math.random() * 10; }
+  }
+  /** soft low ping panned by bearing (pan -1 left .. 1 right): the hydrophone's cue and the sonar's ping */
+  ping(pan = 0, level = 0.06, freq = 130, dur = 0.5) {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(freq * 1.5, t); o.frequency.exponentialRampToValueAtTime(freq, t + dur * 0.35);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, level), t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    if (c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(p); p.connect(this.master); } else g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.05);
   }
   /** hull impact: soft low thump, harder with severity (0..1) */
   thud(sev) {
